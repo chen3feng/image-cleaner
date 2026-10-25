@@ -6,6 +6,7 @@
 #include <string>
 
 #include "codeformer.h"
+#include "colorize.h"
 #include "image_utils.h"
 #include "model_manifest.h"
 #include "realesrgan.h"
@@ -41,10 +42,12 @@ private:
     std::unique_ptr<Scrfd> scrfd_;
     std::unique_ptr<CodeFormer> codeformer_;
     std::unique_ptr<RealEsrgan> esrgan_;
+    std::unique_ptr<Colorizer> colorizer_;
 
     bool ensure_scrfd(std::string& error);
     bool ensure_codeformer(std::string& error);
     bool ensure_esrgan(std::string& error);
+    bool ensure_colorizer(std::string& error);
 
     // Paste a restored 512x512 face into the canvas at output scale s.
     void paste_face(ImageRgb& canvas, int scale, const Face& face,

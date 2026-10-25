@@ -42,6 +42,15 @@ struct CodeFormerConfig {
     int latent_size = 16;           // 16x16 tokens
 };
 
+// DDColor colorization: neutral-grey RGB (1,3,S,S) -> Lab ab (1,2,S,S).
+struct ColorizeConfig {
+    std::string param_path;
+    std::string bin_path;
+    std::string input_blob = "input";
+    std::string output_blob = "output";
+    int size = 256;
+};
+
 struct RealEsrganConfig {
     std::string param_path;
     std::string bin_path;
@@ -56,6 +65,7 @@ struct ModelManifest {
     ScrfdConfig scrfd;
     CodeFormerConfig codeformer;
     RealEsrganConfig realesrgan;
+    ColorizeConfig colorize;
 
     // Resolves every relative model path against model_dir and validates the
     // files exist. Returns false (with error set) otherwise.

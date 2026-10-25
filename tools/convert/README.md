@@ -6,11 +6,12 @@ C++ 管线不写死任何 blob 名，全部来自 `app/src/main/assets/models/mo
 ## 约定
 
 | 模型 | 输入 | 输出 |
-|---|---|---|
+| --- | --- | --- |
 | SCRFD 10g | `input`（1×3×640×640，letterbox） | `score_8/16/32`、`bbox_8/16/32`、`kps_8/16/32`（9 个） |
 | CodeFormer 编码器 | `input`（1×3×512×512，[-1,1]） | `logits`（1×256×1024）、`lq`（1×256×16×16） |
 | CodeFormer 生成器 | `input`（1×256×16×16，AdaIN 后的码本特征） | `output`（1×3×512×512，[-1,1]） |
 | Real-ESRGAN x4v3 | `input`（[0,1] RGB，任意 256 tile） | `output`（4x） |
+| DDColor 上色 | `input`（1×3×256×256，[0,1] 的中性灰 RGB） | `output`（1×2×256×256，Lab ab） |
 
 另有 `codeformer-codebook.bin`：码本权重 1024×256 的裸 float32（1 MB），
 由 `export_codeformer.py` 一并导出。
@@ -30,6 +31,17 @@ C++ 管线不写死任何 blob 名，全部来自 `app/src/main/assets/models/mo
 所以最终方案把**码本 argmax + 查表 + AdaIN 放到 C++**
 （`native/core/codeformer.cpp`），图上只保留卷积/transformer/生成器，
 全部跑在 Vulkan 上。这样既精确（与 PyTorch 差 <2e-4）又快（fp16 shader）。
+
+## DDColor 上色的两个坑
+
+1. **Einsum**：`bqc,bchw->bqhw`（色度查询与像素特征的逐点内积）被 pnnx 转成
+   ncnn 的 Einsum 层后，参数编码有误，设备上直接段错误。因为 B 本身就是
+   `(b, c, h*w)`，等价的 `Reshape + MatMul + Reshape` 更稳，且与 ONNX 结果
+   逐位相同（`export_colorize.py` 里有自检）。
+2. **精度**：fp16 storage 会让 ab 明显漂移（平均误差 2.2，fp32 为 0.13），
+   所以 DDColor 固定走 CPU fp32 —— 256×256 只要 0.8 秒，比 Vulkan 路径还快。
+
+另外它的输入是 **RGB [0,1]**（不是 [-1,1]），ab 直接就是 Lab 色度（不要再乘 110）。
 
 ## 步骤
 

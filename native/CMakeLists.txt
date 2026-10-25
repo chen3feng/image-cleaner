@@ -37,6 +37,7 @@ add_library(pixelup_core SHARED
         core/model_manifest.cpp
         core/scrfd.cpp
         core/codeformer.cpp
+        core/colorize.cpp
         core/realesrgan.cpp
         core/image_utils.cpp
         core/json_min.cpp

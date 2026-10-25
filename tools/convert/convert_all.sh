@@ -102,6 +102,19 @@ else
     echo "SKIP CodeFormer: missing $WEIGHTS/codeformer.pth"
 fi
 
+# ---------------- DDColor colorization (ONNX -> pnnx) ----------------
+# Weights: https://huggingface.co/wavespeed/image-colorizer (ddcolor-fp16.onnx)
+COLORIZE_ONNX="$WEIGHTS/ddcolor-fp16.onnx"
+if [[ -f "$COLORIZE_ONNX" ]]; then
+    "$PYTHON" "$SCRIPT_DIR/export_colorize.py" --onnx "$COLORIZE_ONNX" --out-dir "$BUILD"
+    run_pnnx colorize.onnx "[1,3,256,256]"
+    rename "$BUILD/colorize.ncnn.param" "$DIST/colorize-ddcolor.ncnn.param" \
+        --rename in0=input --rename out0=output
+    cp "$BUILD/colorize.ncnn.bin" "$DIST/colorize-ddcolor.ncnn.bin"
+else
+    echo "SKIP colorize: missing $COLORIZE_ONNX"
+fi
+
 # ---------------- Real-ESRGAN general x4v3 (TorchScript -> pnnx) ----------------
 if [[ -f "$WEIGHTS/realesr-general-x4v3.pth" ]]; then
     if [[ ! -f "$BUILD/realesrgan-x4v3.pt" ]]; then

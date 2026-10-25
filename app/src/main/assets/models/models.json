@@ -1,9 +1,9 @@
 {
   "version": 1,
-  "base_url": "https://github.com/chen3feng/image-cleaner/releases/download/models-1/",
+  "base_url": "https://github.com/chen3feng/image-cleaner/releases/download/models-2/",
   "mirror_base_urls": [
-    "https://ghfast.top/https://github.com/chen3feng/image-cleaner/releases/download/models-1/",
-    "https://gh-proxy.com/https://github.com/chen3feng/image-cleaner/releases/download/models-1/"
+    "https://ghfast.top/https://github.com/chen3feng/image-cleaner/releases/download/models-2/",
+    "https://gh-proxy.com/https://github.com/chen3feng/image-cleaner/releases/download/models-2/"
   ],
   "files": [
     {
@@ -59,6 +59,18 @@
       "path": "realesrgan-x4v3.ncnn.bin",
       "size": 2435272,
       "sha256": "8fdd6052f8931091164a570ee7b5c5b2d1dcd991112d464eb9ae1a5b52ece553"
+    },
+    {
+      "id": "colorize_param",
+      "path": "colorize-ddcolor.ncnn.param",
+      "size": 58636,
+      "sha256": "b5823611f7df7e39b663c000cbae6ddd1be0506c93ba5daf3115f67aaf6696e6"
+    },
+    {
+      "id": "colorize_bin",
+      "path": "colorize-ddcolor.ncnn.bin",
+      "size": 115717696,
+      "sha256": "6ec795185f0131ea039e55b3d5d2f366ce161c9b563154c948a10533d24476eb"
     }
   ],
   "scrfd": {
@@ -117,5 +129,12 @@
     "scale": 4,
     "tile": 256,
     "tile_overlap": 32
+  },
+  "colorize": {
+    "param": "colorize-ddcolor.ncnn.param",
+    "bin": "colorize-ddcolor.ncnn.bin",
+    "input_blob": "input",
+    "output_blob": "output",
+    "size": 256
   }
 }

@@ -20,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Face
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Share
@@ -56,6 +57,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.imagecleaner.app.core.NativeEnhancer.MODE_AUTO
+import com.imagecleaner.app.core.NativeEnhancer.MODE_COLORIZE
 import com.imagecleaner.app.core.NativeEnhancer.MODE_FACES
 import com.imagecleaner.app.core.NativeEnhancer.MODE_UPSCALE
 import com.imagecleaner.app.data.ModelManager
@@ -233,33 +235,41 @@ private fun ControlPanel(
 
             Spacer(Modifier.height(16.dp))
 
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("倍率", style = MaterialTheme.typography.labelLarge)
-                Spacer(Modifier.width(16.dp))
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf(2, 4).forEach { scale ->
-                        FilterChip(
-                            selected = state.scale == scale,
-                            enabled = state.mode != MODE_FACES && !state.running,
-                            onClick = { viewModel.setScale(scale) },
-                            label = { Text("${scale}x") }
-                        )
+            if (state.mode == MODE_COLORIZE) {
+                Text(
+                    "适合黑白老照片：只补颜色，不改分辨率",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("倍率", style = MaterialTheme.typography.labelLarge)
+                    Spacer(Modifier.width(16.dp))
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf(2, 4).forEach { scale ->
+                            FilterChip(
+                                selected = state.scale == scale,
+                                enabled = state.mode != MODE_FACES && !state.running,
+                                onClick = { viewModel.setScale(scale) },
+                                label = { Text("${scale}x") }
+                            )
+                        }
                     }
                 }
+
+                Spacer(Modifier.height(12.dp))
+
+                Text(
+                    "人脸保真度：${(state.fidelity * 100).toInt()}%（越低修复越强）",
+                    style = MaterialTheme.typography.labelLarge
+                )
+                Slider(
+                    value = state.fidelity,
+                    onValueChange = viewModel::setFidelity,
+                    enabled = state.mode != MODE_UPSCALE && !state.running,
+                    valueRange = 0f..1f
+                )
             }
-
-            Spacer(Modifier.height(12.dp))
-
-            Text(
-                "人脸保真度：${(state.fidelity * 100).toInt()}%（越低修复越强）",
-                style = MaterialTheme.typography.labelLarge
-            )
-            Slider(
-                value = state.fidelity,
-                onValueChange = viewModel::setFidelity,
-                enabled = state.mode != MODE_UPSCALE && !state.running,
-                valueRange = 0f..1f
-            )
 
             Spacer(Modifier.height(8.dp))
 
@@ -301,7 +311,8 @@ private fun ModeSelector(
     val modes = listOf(
         Mode(MODE_AUTO, "智能增强", Icons.Filled.AutoAwesome),
         Mode(MODE_FACES, "人脸修复", Icons.Filled.Face),
-        Mode(MODE_UPSCALE, "超分辨率", Icons.Filled.Upgrade)
+        Mode(MODE_UPSCALE, "超分辨率", Icons.Filled.Upgrade),
+        Mode(MODE_COLORIZE, "上色", Icons.Filled.Palette)
     )
     SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
         modes.forEachIndexed { index, mode ->

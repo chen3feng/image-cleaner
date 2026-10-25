@@ -119,6 +119,14 @@ bool ModelManifest::Load(const std::string& model_dir, const std::string& json,
         out.realesrgan.tile_overlap = v.get_int("tile_overlap", out.realesrgan.tile_overlap);
     }
 
+    // Optional: older installs may not have the colorization bundle yet.
+    if (const JsonValue* c2 = root.find("colorize")) {
+        resolve_weights(*c2, model_dir, out.colorize.param_path, out.colorize.bin_path);
+        out.colorize.input_blob = c2->get_string("input_blob", out.colorize.input_blob);
+        out.colorize.output_blob = c2->get_string("output_blob", out.colorize.output_blob);
+        out.colorize.size = c2->get_int("size", out.colorize.size);
+    }
+
     const std::string* paths[] = {
         &out.scrfd.param_path, &out.scrfd.bin_path,
         &out.codeformer.enc_param_path, &out.codeformer.enc_bin_path,
@@ -130,6 +138,14 @@ bool ModelManifest::Load(const std::string& model_dir, const std::string& json,
             error = "model file missing: " + *p;
             return false;
         }
+    }
+    if (!out.colorize.param_path.empty() && !file_exists(out.colorize.param_path)) {
+        error = "model file missing: " + out.colorize.param_path;
+        return false;
+    }
+    if (!out.colorize.bin_path.empty() && !file_exists(out.colorize.bin_path)) {
+        error = "model file missing: " + out.colorize.bin_path;
+        return false;
     }
 
     struct stat st {};

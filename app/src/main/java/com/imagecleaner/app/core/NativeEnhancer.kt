@@ -14,6 +14,7 @@ object NativeEnhancer {
     const val MODE_AUTO = 0
     const val MODE_FACES = 1
     const val MODE_UPSCALE = 2
+    const val MODE_COLORIZE = 3
 
     init {
         System.loadLibrary("pixelup_core")

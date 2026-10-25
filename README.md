@@ -8,12 +8,14 @@ Vulkan），图片不上传服务器；推理核心是纯 C++/C ABI，未来可�
 ```text
 输入图片
    │
-   ├── SCRFD 10g           人脸检测 + 5 点关键点（letterbox 640）
+   ├── 智能增强  SCRFD 10g 人脸检测 + 5 点关键点（letterbox 640）
+   │            → Real-ESRGAN x4v3 全图超分（256 分块 + 羽化融合，2x/4x）
+   │            → CodeFormer 逐脸：按 5 点对齐 512² → 编码器 → 码本查表
+   │              → 生成器 → 逆变换贴回超分画布，椭圆羽化混合
    │
-   ├── Real-ESRGAN x4v3    全图超分（256 分块 + 羽化融合，可选 2x/4x）
-   │
-   └── CodeFormer          逐脸：按 5 点对齐到 512² → 编码器 → 码本查表
-                           → 生成器 → 逆变换贴回超分画布，椭圆羽化混合
+   ├── 人脸修复  仅 CodeFormer，保持原分辨率
+   ├── 超分辨率  仅 Real-ESRGAN
+   └── 上色      DDColor：取 L 通道 → 预测 Lab ab 色度 → 与原图 L 合成
    │
 输出（可拖动分割线对比，保存到相册 / 分享）
 ```
@@ -30,15 +32,17 @@ AdaIN 在 C++ 里完成（详见 `tools/convert/README.md`：ncnn 的 Vulkan 2D 
   国内可达的镜像前缀，主源超时自动切换
 - **内存预算**：4x 输入长边 ≤960、2x ≤1536，超大图自动等比缩小（见 ViewModel）
 - **保真度滑块**：0 = 最强修复，1 = 保留原始纹理（与 CodeFormer 官方一致的混合）
+- **黑白照片上色**：DDColor（ICCV 2023），Lab 空间的 ab 色度预测，仅补色不改分辨率
 
-实测（小米 12 / 骁龙 8 Gen 1 / Adreno 730，1204×645 四人合照）：
+实测（1204×645 四人合照）：
 
-| 阶段 | 耗时 |
-| --- | --- |
-| 人脸检测（SCRFD 10g） | 0.2 s（首次含着色器编译 ~7 s） |
-| 全图 2x 超分（Real-ESRGAN，18 个分块） | 9 s |
-| 单脸修复（CodeFormer 编码器 + 生成器） | 8 s（编码器 ~4.6 s，生成器 ~3.1 s） |
-| 四人合照整体 | 约 43 s（暖机后） |
+| 阶段 | 小米 12（8 Gen 1） | Galaxy S25+（8 Elite） |
+| --- | --- | --- |
+| 人脸检测（SCRFD 10g） | 0.2 s | 0.03 s |
+| 全图 2x 超分（Real-ESRGAN，18 分块） | 9 s | 3.6 s |
+| 单脸修复（CodeFormer 编/解码） | 8 s | 1.2 s |
+| 四人合照 2x 整体 | 43 s | 8.7 s |
+| **上色（DDColor，CPU）** | — | **0.8 s** |
 
 ## 技术栈
 
@@ -47,7 +51,7 @@ AdaIN 在 C++ 里完成（详见 `tools/convert/README.md`：ncnn 的 Vulkan 2D 
 | UI | Kotlin + Jetpack Compose（Material 3） |
 | 推理 | C++17 + [ncnn](https://github.com/Tencent/ncnn)（静态链接，Vulkan） |
 | 桥接 | JNI（薄封装），对内暴露纯 C ABI `native/core/enhancer_c_api.h` |
-| 模型 | SCRFD 10g / CodeFormer(fp16, 编码器+生成器两段) / Real-ESRGAN x4v3(fp16) |
+| 模型 | SCRFD 10g / CodeFormer(fp16, 编码器+生成器两段) / Real-ESRGAN x4v3(fp16) / DDColor(fp32) |
 | 下载 | OkHttp + 文件完整性校验 |
 
 ## 目录结构
@@ -169,7 +173,14 @@ GPU 行为 + 苹果生态的分发门槛**。如果后续验证 iOS 是硬需求
 
 ## 路线图
 
+- [ ] **瑕疵抹除 / 消除杂物**（对标 [IOPaint / lama-cleaner](https://github.com/Sanster/IOPaint)）：
+  方案已选定 LaMa，模型用 `lama_512_fp16.onnx`（约 107 MB，固定 512×512 输入，
+  权重 fp16）。它的 FFC 层把 FFT 换成了固定尺寸 matmul —— ncnn 没有 FFT 算子，
+  普通 LaMa 导出无法转换，这个变体可以。落地时需要：
+  - 原生新增 `IC_MODE_INPAINT`，输入多一张 mask（同尺寸单通道）
+  - UI 增加涂抹画笔（Compose Canvas + PointerInput，把笔迹栅格化成 mask）
+  - 与现有模式并列，不做超分/人脸检测
 - [ ] armeabi-v7a / x86_64 ABI
 - [ ] 端上 benchmark 页面（各阶段耗时、GPU/CPU 开关）
-- [ ] 动漫模型（Real-ESRGAN animevideov3）、老照片去噪/上色
+- [ ] 动漫模型（Real-ESRGAN animevideov3）
 - [ ] iOS SwiftUI 壳工程

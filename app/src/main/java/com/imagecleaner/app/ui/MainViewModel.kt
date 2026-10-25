@@ -111,7 +111,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             try {
                 val bitmap = withContext(Dispatchers.IO) {
-                    PhotoIO.decode(getApplication(), uri, maxLongEdgeFor(_ui.value.scale))
+                    PhotoIO.decode(
+                        getApplication(), uri,
+                        maxLongEdgeFor(_ui.value.mode, _ui.value.scale)
+                    )
                 }
                 _ui.value.source?.recycle()
                 _ui.value.result?.recycle()
@@ -158,7 +161,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Fits the bitmap to the memory budget for the requested scale. */
     private fun prepareInput(source: Bitmap, mode: Int, scale: Int): Pair<Bitmap, Boolean> {
-        val cap = maxLongEdgeFor(if (mode == MODE_FACES) 1 else scale)
+        val cap = maxLongEdgeFor(mode, scale)
         val longEdge = maxOf(source.width, source.height)
         if (longEdge <= cap) return source to false
         val ratio = cap.toFloat() / longEdge
@@ -173,7 +176,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val src = ByteBuffer.allocateDirect(w * h * 4).order(ByteOrder.nativeOrder())
         bitmap.copyPixelsToBuffer(src)
 
-        val outScale = if (mode == MODE_FACES) 1 else scale
+        val outScale = if (mode == MODE_FACES || mode == NativeEnhancer.MODE_COLORIZE) 1 else scale
         val outW = w * outScale
         val outH = h * outScale
         val dst = ByteBuffer.allocateDirect(outW * outH * 4).order(ByteOrder.nativeOrder())
@@ -220,6 +223,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     override fun onCleared() {
         if (handle != 0L) NativeEnhancer.nativeDestroy(handle)
+    }
+
+    private fun maxLongEdgeFor(mode: Int, scale: Int): Int = when {
+        // Colorization never upscales: it only needs the L channel at full
+        // resolution plus a 256x256 network pass, so a moderate cap is enough.
+        mode == NativeEnhancer.MODE_COLORIZE -> 2048
+        mode == NativeEnhancer.MODE_FACES -> maxLongEdgeFor(1)
+        else -> maxLongEdgeFor(scale)
     }
 
     private fun maxLongEdgeFor(scale: Int): Int = when (scale) {

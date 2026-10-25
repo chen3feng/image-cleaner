@@ -62,6 +62,17 @@ ImageRgb resize_bilinear(const ImageRgb& src, int new_w, int new_h);
 std::vector<float> ellipse_feather_mask(int size, float cx, float cy,
                                         float rx, float ry, float feather);
 
+// --- CIE Lab (sRGB primaries, D65 white, OpenCV-compatible) ---------------
+// Input channels are 0..255 float; output L in [0,100], a/b in about [-127,127].
+inline float srgb_to_linear(float c) {
+    return c <= 0.04045f ? c / 12.92f : std::pow((c + 0.055f) / 1.055f, 2.4f);
+}
+inline float linear_to_srgb(float c) {
+    return c <= 0.0031308f ? c * 12.92f : 1.055f * std::pow(c, 1.0f / 2.4f) - 0.055f;
+}
+void rgb_to_lab(float r, float g, float b, float& L, float& A, float& B);
+void lab_to_rgb(float L, float A, float B, float& r, float& g, float& b);
+
 // ArcFace 5-point reference template scaled from 112x112 to size x size.
 void arcface_template_5pt(float out_xy[10], int size);
 

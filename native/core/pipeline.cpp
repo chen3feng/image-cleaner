@@ -96,6 +96,18 @@ bool Pipeline::ensure_esrgan(std::string& error) {
     return true;
 }
 
+bool Pipeline::ensure_colorizer(std::string& error) {
+    if (manifest_.colorize.param_path.empty() || manifest_.colorize.bin_path.empty()) {
+        error = "colorization model is not available";
+        return false;
+    }
+    if (!colorizer_) {
+        colorizer_ = std::make_unique<Colorizer>();
+        if (!colorizer_->Load(manifest_.colorize, threads_, error)) return false;
+    }
+    return true;
+}
+
 void Pipeline::paste_face(ImageRgb& canvas, int scale, const Face& face,
                           const ImageRgb& restored, const std::vector<float>& mask512) {
     const int s512 = manifest_.codeformer.size;
@@ -170,6 +182,25 @@ bool Pipeline::Enhance(const uint8_t* src_rgba, int src_w, int src_h,
 
     ImageRgb src;
     rgba_to_rgb(src_rgba, src_w, src_h, src_stride, src);
+
+    // Colorization is a standalone transform: no detection, no upscaling.
+    if (mode == IC_MODE_COLORIZE) {
+        const auto t = Clock::now();
+        if (progress) progress({IC_STAGE_COLORIZE, 0.f, "照片上色"});
+        if (!ensure_colorizer(error)) return false;
+        ImageRgb colored = colorizer_->Colorize(src);
+        PIXELUP_LOGI("colorize: %lldms", ms_since(t));
+        if (progress) progress({IC_STAGE_COLORIZE, 1.f, "照片上色"});
+        out_w = colored.w;
+        out_h = colored.h;
+        if (static_cast<int64_t>(dst_capacity) <
+            static_cast<int64_t>(out_w) * out_h * 4) {
+            error = "output buffer too small";
+            return false;
+        }
+        rgb_to_rgba(colored, dst_rgba, out_w * 4);
+        return true;
+    }
 
     const bool want_faces = mode != IC_MODE_UPSCALE;
     int scale = mode == IC_MODE_FACES ? 1 : (target_scale <= 1 ? 1 : target_scale < 3 ? 2 : 4);

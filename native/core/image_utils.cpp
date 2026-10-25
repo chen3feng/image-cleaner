@@ -250,6 +250,60 @@ std::vector<float> ellipse_feather_mask(int size, float cx, float cy,
     return mask;
 }
 
+namespace {
+
+inline float lab_f(float t) {
+    const float delta = 6.0f / 29.0f;
+    return t > delta * delta * delta ? std::cbrt(t)
+                                     : t / (3.0f * delta * delta) + 4.0f / 29.0f;
+}
+
+inline float lab_f_inv(float t) {
+    const float delta = 6.0f / 29.0f;
+    return t > delta ? t * t * t : 3.0f * delta * delta * (t - 4.0f / 29.0f);
+}
+
+// D65 white point used by OpenCV's Lab conversion.
+constexpr float kXn = 0.950456f;
+constexpr float kYn = 1.0f;
+constexpr float kZn = 1.088754f;
+
+}  // namespace
+
+void rgb_to_lab(float r, float g, float b, float& L, float& A, float& B) {
+    const float rl = srgb_to_linear(r / 255.0f);
+    const float gl = srgb_to_linear(g / 255.0f);
+    const float bl = srgb_to_linear(b / 255.0f);
+    const float x = 0.412453f * rl + 0.357580f * gl + 0.180423f * bl;
+    const float y = 0.212671f * rl + 0.715160f * gl + 0.072169f * bl;
+    const float z = 0.019334f * rl + 0.119193f * gl + 0.950227f * bl;
+
+    const float fx = lab_f(x / kXn);
+    const float fy = lab_f(y / kYn);
+    const float fz = lab_f(z / kZn);
+    L = 116.0f * fy - 16.0f;
+    A = 500.0f * (fx - fy);
+    B = 200.0f * (fy - fz);
+}
+
+void lab_to_rgb(float L, float A, float B, float& r, float& g, float& b) {
+    const float fy = (L + 16.0f) / 116.0f;
+    const float fx = fy + A / 500.0f;
+    const float fz = fy - B / 200.0f;
+    const float x = kXn * lab_f_inv(fx);
+    const float y = kYn * lab_f_inv(fy);
+    const float z = kZn * lab_f_inv(fz);
+
+    float rl = 3.240479f * x - 1.537150f * y - 0.498535f * z;
+    float gl = -0.969256f * x + 1.875992f * y + 0.041556f * z;
+    float bl = 0.055648f * x - 0.204043f * y + 1.057311f * z;
+
+    auto clamp01 = [](float v) { return std::min(1.f, std::max(0.f, v)); };
+    r = clamp01(linear_to_srgb(clamp01(rl))) * 255.0f;
+    g = clamp01(linear_to_srgb(clamp01(gl))) * 255.0f;
+    b = clamp01(linear_to_srgb(clamp01(bl))) * 255.0f;
+}
+
 void arcface_template_5pt(float out_xy[10], int size) {
     // ArcFace reference landmarks for 112x112
     static const float kTemplate112[10] = {

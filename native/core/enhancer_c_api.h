@@ -14,7 +14,8 @@ typedef void* IC_Handle;
 enum IC_Mode {
     IC_MODE_AUTO = 0,      // face restoration + whole-image super-resolution
     IC_MODE_FACES = 1,     // CodeFormer on faces only, original resolution kept
-    IC_MODE_UPSCALE = 2    // Real-ESRGAN only, no face detection
+    IC_MODE_UPSCALE = 2,   // Real-ESRGAN only, no face detection
+    IC_MODE_COLORIZE = 3   // DDColor: colourise a black-and-white photo
 };
 
 enum IC_Stage {
@@ -22,7 +23,8 @@ enum IC_Stage {
     IC_STAGE_DETECT_FACES = 1,
     IC_STAGE_UPSCALE = 2,
     IC_STAGE_ENHANCE_FACES = 3,
-    IC_STAGE_FINALIZE = 4
+    IC_STAGE_FINALIZE = 4,
+    IC_STAGE_COLORIZE = 5
 };
 
 typedef void (*IC_ProgressFn)(int stage, float percent, const char* message,
