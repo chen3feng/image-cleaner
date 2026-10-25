@@ -115,6 +115,19 @@ else
     echo "SKIP colorize: missing $COLORIZE_ONNX"
 fi
 
+# ---------------- LaMa inpainting (ONNX -> pnnx) ----------------
+# Weights: https://huggingface.co/g-ronimo/lama (lama_512_fp16.onnx)
+INPAINT_ONNX="$WEIGHTS/lama_512_fp16.onnx"
+if [[ -f "$INPAINT_ONNX" ]]; then
+    "$PYTHON" "$SCRIPT_DIR/export_inpaint.py" --onnx "$INPAINT_ONNX" --out-dir "$BUILD"
+    run_pnnx inpaint.onnx "[1,4,512,512]"
+    rename "$BUILD/inpaint.ncnn.param" "$DIST/inpaint-lama.ncnn.param" \
+        --rename in0=input --rename out0=output
+    cp "$BUILD/inpaint.ncnn.bin" "$DIST/inpaint-lama.ncnn.bin"
+else
+    echo "SKIP inpaint: missing $INPAINT_ONNX"
+fi
+
 # ---------------- Real-ESRGAN general x4v3 (TorchScript -> pnnx) ----------------
 if [[ -f "$WEIGHTS/realesr-general-x4v3.pth" ]]; then
     if [[ ! -f "$BUILD/realesrgan-x4v3.pt" ]]; then

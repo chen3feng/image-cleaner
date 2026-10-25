@@ -15,10 +15,15 @@ Vulkan），图片不上传服务器；推理核心是纯 C++/C ABI，未来可�
    │
    ├── 人脸修复  仅 CodeFormer，保持原分辨率
    ├── 超分辨率  仅 Real-ESRGAN
-   └── 上色      DDColor：取 L 通道 → 预测 Lab ab 色度 → 与原图 L 合成
+   ├── 上色      DDColor：取 L 通道 → 预测 Lab ab 色度 → 与原图 L 合成
+   └── 消除      LaMa：按涂抹区域裁 512² 窗口 → 重绘 → 贴回，其余像素不动
    │
 输出（可拖动分割线对比，保存到相册 / 分享）
 ```
+
+「消除」是交互式的：进入该模式后在图上涂抹要去掉的东西（红色遮罩预览），
+再点「消除选区」。LaMa 固定 512×512 输入，所以会把涂抹区域的包围盒外扩 2 倍
+裁成正方形送进网络，再只把涂抹区合成回原图 —— 窗口外的像素完全不受影响。
 
 CodeFormer 被拆成 **编码器 / 生成器** 两段 ncnn 网络，中间的码本 argmax、查表和
 AdaIN 在 C++ 里完成（详见 `tools/convert/README.md`：ncnn 的 Vulkan 2D Reduction
@@ -33,6 +38,7 @@ AdaIN 在 C++ 里完成（详见 `tools/convert/README.md`：ncnn 的 Vulkan 2D 
 - **内存预算**：4x 输入长边 ≤960、2x ≤1536，超大图自动等比缩小（见 ViewModel）
 - **保真度滑块**：0 = 最强修复，1 = 保留原始纹理（与 CodeFormer 官方一致的混合）
 - **黑白照片上色**：DDColor（ICCV 2023），Lab 空间的 ab 色度预测，仅补色不改分辨率
+- **消除杂物**：LaMa（Samsung Research），涂抹即擦除，只重绘选区，画面其余部分零改动
 
 实测（1204×645 四人合照）：
 
@@ -43,6 +49,7 @@ AdaIN 在 C++ 里完成（详见 `tools/convert/README.md`：ncnn 的 Vulkan 2D 
 | 单脸修复（CodeFormer 编/解码） | 8 s | 1.2 s |
 | 四人合照 2x 整体 | 43 s | 8.7 s |
 | **上色（DDColor，CPU）** | — | **0.8 s** |
+| **消除选区（LaMa，GPU）** | — | **2–3 s** |
 
 ## 技术栈
 
@@ -51,7 +58,7 @@ AdaIN 在 C++ 里完成（详见 `tools/convert/README.md`：ncnn 的 Vulkan 2D 
 | UI | Kotlin + Jetpack Compose（Material 3） |
 | 推理 | C++17 + [ncnn](https://github.com/Tencent/ncnn)（静态链接，Vulkan） |
 | 桥接 | JNI（薄封装），对内暴露纯 C ABI `native/core/enhancer_c_api.h` |
-| 模型 | SCRFD 10g / CodeFormer(fp16, 编码器+生成器两段) / Real-ESRGAN x4v3(fp16) / DDColor(fp32) |
+| 模型 | SCRFD 10g / CodeFormer(fp16, 编码器+生成器两段) / Real-ESRGAN x4v3(fp16) / DDColor(fp32) / LaMa(fp16) |
 | 下载 | OkHttp + 文件完整性校验 |
 
 ## 目录结构
@@ -173,13 +180,10 @@ GPU 行为 + 苹果生态的分发门槛**。如果后续验证 iOS 是硬需求
 
 ## 路线图
 
-- [ ] **瑕疵抹除 / 消除杂物**（对标 [IOPaint / lama-cleaner](https://github.com/Sanster/IOPaint)）：
-  方案已选定 LaMa，模型用 `lama_512_fp16.onnx`（约 107 MB，固定 512×512 输入，
-  权重 fp16）。它的 FFC 层把 FFT 换成了固定尺寸 matmul —— ncnn 没有 FFT 算子，
-  普通 LaMa 导出无法转换，这个变体可以。落地时需要：
-  - 原生新增 `IC_MODE_INPAINT`，输入多一张 mask（同尺寸单通道）
-  - UI 增加涂抹画笔（Compose Canvas + PointerInput，把笔迹栅格化成 mask）
-  - 与现有模式并列，不做超分/人脸检测
+- [x] **瑕疵抹除 / 消除杂物**（对标 [IOPaint / lama-cleaner](https://github.com/Sanster/IOPaint)）：
+  LaMa（`lama_512_fp16.onnx`，FFT 已换成固定尺寸 matmul，绕开 ncnn 无 FFT 的限制），
+  涂抹即可擦除，见上面的「消除」模式
+- [ ] 更大范围的消除：目前按涂抹包围盒裁 512² 窗口，超大物体需要多次涂抹
 - [ ] armeabi-v7a / x86_64 ABI
 - [ ] 端上 benchmark 页面（各阶段耗时、GPU/CPU 开关）
 - [ ] 动漫模型（Real-ESRGAN animevideov3）

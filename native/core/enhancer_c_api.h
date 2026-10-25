@@ -15,7 +15,8 @@ enum IC_Mode {
     IC_MODE_AUTO = 0,      // face restoration + whole-image super-resolution
     IC_MODE_FACES = 1,     // CodeFormer on faces only, original resolution kept
     IC_MODE_UPSCALE = 2,   // Real-ESRGAN only, no face detection
-    IC_MODE_COLORIZE = 3   // DDColor: colourise a black-and-white photo
+    IC_MODE_COLORIZE = 3,  // DDColor: colourise a black-and-white photo
+    IC_MODE_INPAINT = 4    // LaMa: regenerate a painted region (see ic_inpaint)
 };
 
 enum IC_Stage {
@@ -24,7 +25,8 @@ enum IC_Stage {
     IC_STAGE_UPSCALE = 2,
     IC_STAGE_ENHANCE_FACES = 3,
     IC_STAGE_FINALIZE = 4,
-    IC_STAGE_COLORIZE = 5
+    IC_STAGE_COLORIZE = 5,
+    IC_STAGE_INPAINT = 6
 };
 
 typedef void (*IC_ProgressFn)(int stage, float percent, const char* message,
@@ -47,6 +49,15 @@ int ic_enhance(IC_Handle handle,
                uint8_t* dst_rgba, int dst_capacity_bytes,
                int mode, float fidelity, int target_scale,
                int* out_w, int* out_h,
+               IC_ProgressFn progress, void* user_data);
+
+// Object removal / inpainting. `mask` is one byte per pixel (0 = keep,
+// >=128 = paint over) with the same dimensions as the source; dst receives the
+// same-size result. Returns 0 on success, negative on failure.
+int ic_inpaint(IC_Handle handle,
+               const uint8_t* src_rgba, int src_w, int src_h, int src_stride,
+               const uint8_t* mask, int mask_stride,
+               uint8_t* dst_rgba, int dst_capacity,
                IC_ProgressFn progress, void* user_data);
 
 // Thread-local, never NULL.

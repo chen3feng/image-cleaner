@@ -42,6 +42,15 @@ struct CodeFormerConfig {
     int latent_size = 16;           // 16x16 tokens
 };
 
+// LaMa inpainting: [1,4,S,S] (masked RGB + binary mask) -> [1,3,S,S].
+struct InpaintConfig {
+    std::string param_path;
+    std::string bin_path;
+    std::string input_blob = "input";
+    std::string output_blob = "output";
+    int size = 512;
+};
+
 // DDColor colorization: neutral-grey RGB (1,3,S,S) -> Lab ab (1,2,S,S).
 struct ColorizeConfig {
     std::string param_path;
@@ -66,6 +75,7 @@ struct ModelManifest {
     CodeFormerConfig codeformer;
     RealEsrganConfig realesrgan;
     ColorizeConfig colorize;
+    InpaintConfig inpaint;
 
     // Resolves every relative model path against model_dir and validates the
     // files exist. Returns false (with error set) otherwise.

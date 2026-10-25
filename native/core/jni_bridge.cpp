@@ -90,6 +90,22 @@ Java_com_imagecleaner_app_core_NativeEnhancer_nativeLastError(JNIEnv* env, jclas
     return env->NewStringUTF(ic_last_error());
 }
 
+extern "C" JNIEXPORT jint JNICALL
+Java_com_imagecleaner_app_core_NativeEnhancer_nativeInpaint(
+    JNIEnv* env, jclass, jlong handle, jobject src, jint src_w, jint src_h,
+    jobject mask, jobject dst, jint dst_capacity, jlong callback_id) {
+    auto* h = reinterpret_cast<IC_Handle>(handle);
+    auto* src_ptr = static_cast<uint8_t*>(env->GetDirectBufferAddress(src));
+    auto* mask_ptr = static_cast<uint8_t*>(env->GetDirectBufferAddress(mask));
+    auto* dst_ptr = static_cast<uint8_t*>(env->GetDirectBufferAddress(dst));
+    if (!h || !src_ptr || !mask_ptr || !dst_ptr) return -1;
+
+    ProgressContext ctx{callback_id};
+    return ic_inpaint(h, src_ptr, src_w, src_h, src_w * 4, mask_ptr, src_w,
+                      dst_ptr, dst_capacity,
+                      callback_id != 0 ? progress_trampoline : nullptr, &ctx);
+}
+
 extern "C" JNIEXPORT jintArray JNICALL
 Java_com_imagecleaner_app_core_NativeEnhancer_nativeEnhance(
     JNIEnv* env, jclass, jlong handle, jobject src, jint src_w, jint src_h,

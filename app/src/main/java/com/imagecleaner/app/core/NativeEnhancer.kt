@@ -15,6 +15,7 @@ object NativeEnhancer {
     const val MODE_FACES = 1
     const val MODE_UPSCALE = 2
     const val MODE_COLORIZE = 3
+    const val MODE_INPAINT = 4
 
     init {
         System.loadLibrary("pixelup_core")
@@ -42,6 +43,13 @@ object NativeEnhancer {
         callbackId: Long
     ): IntArray?
 
+    @JvmStatic external fun nativeInpaint(
+        handle: Long,
+        src: ByteBuffer, srcW: Int, srcH: Int,
+        mask: ByteBuffer, dst: ByteBuffer, dstCapacity: Int,
+        callbackId: Long
+    ): Int
+
     /** Called from native code on the worker thread. */
     @JvmStatic
     fun dispatchProgress(id: Long, stage: Int, percent: Float, message: String) {
@@ -52,6 +60,31 @@ object NativeEnhancer {
         val handle = nativeCreate(modelDir, manifestJson, threads, useVulkan)
         if (handle == 0L) throw IOException(nativeLastError())
         return handle
+    }
+
+    /**
+     * Regenerates the painted area. [mask] holds one byte per pixel (0 keep,
+     * 255 paint over) for a [srcW] x [srcH] image.
+     */
+    fun inpaint(
+        handle: Long,
+        src: ByteBuffer, srcW: Int, srcH: Int,
+        mask: ByteBuffer, dst: ByteBuffer,
+        listener: ProgressListener? = null
+    ) {
+        val id = listener?.let {
+            val newId = nextCallbackId.getAndIncrement()
+            callbacks[newId] = it
+            newId
+        } ?: 0L
+        try {
+            val rc = nativeInpaint(
+                handle, src, srcW, srcH, mask, dst, dst.capacity(), id
+            )
+            if (rc != 0) throw IOException(nativeLastError())
+        } finally {
+            callbacks.remove(id)
+        }
     }
 
     /** Returns output (width, height). Buffer contents are tightly packed RGBA. */

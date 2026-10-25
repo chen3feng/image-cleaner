@@ -10,6 +10,7 @@ import com.imagecleaner.app.core.ModelManifest
 import com.imagecleaner.app.core.NativeEnhancer
 import com.imagecleaner.app.core.NativeEnhancer.MODE_AUTO
 import com.imagecleaner.app.core.NativeEnhancer.MODE_FACES
+import com.imagecleaner.app.core.NativeEnhancer.MODE_INPAINT
 import com.imagecleaner.app.core.NativeEnhancer.MODE_UPSCALE
 import com.imagecleaner.app.data.ModelManager
 import com.imagecleaner.app.data.PhotoIO
@@ -34,6 +35,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val mode: Int = MODE_AUTO,
         val scale: Int = 2,
         val fidelity: Float = 0.7f,
+        val brush: Float = 0.06f,          // brush radius, fraction of image width
+        val maskVersion: Int = 0,          // bumped on every stroke
+        val hasMask: Boolean = false,
         val running: Boolean = false,
         val progress: Progress = Progress(0, 0f, ""),
         val notice: String? = null
@@ -49,6 +53,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val modelManager = ModelManager(app)
     private var handle: Long = 0L
     private var creating = false
+
+    /** Paint layer for object removal; alpha = painted area, image-sized. */
+    private var maskBitmap: Bitmap? = null
+    private val maskPaint = android.graphics.Paint().apply {
+        color = android.graphics.Color.WHITE
+        style = android.graphics.Paint.Style.FILL
+        isAntiAlias = true
+    }
+    private val maskCanvasPaint = maskPaint
 
     init {
         viewModelScope.launch {
@@ -103,6 +116,44 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _ui.value = _ui.value.copy(fidelity = value)
     }
 
+    fun setBrush(value: Float) {
+        _ui.value = _ui.value.copy(brush = value.coerceIn(0.01f, 0.25f))
+    }
+
+    /** The paint layer at source resolution, or null before a photo is loaded. */
+    fun maskBitmap(): Bitmap? = maskBitmap
+
+    private fun resetMask(source: Bitmap) {
+        maskBitmap?.recycle()
+        maskBitmap = Bitmap.createBitmap(
+            source.width, source.height, Bitmap.Config.ARGB_8888
+        )
+        _ui.value = _ui.value.copy(maskVersion = 0, hasMask = false)
+    }
+
+    fun paintMask(cx: Float, cy: Float) {
+        val mask = maskBitmap ?: return
+        val radius = (_ui.value.brush * mask.width).coerceAtLeast(1f)
+        android.graphics.Canvas(mask).drawCircle(cx, cy, radius, maskCanvasPaint)
+        _ui.value = _ui.value.copy(
+            maskVersion = _ui.value.maskVersion + 1,
+            hasMask = true
+        )
+    }
+
+    fun clearMask() {
+        val source = _ui.value.source ?: return
+        resetMask(source)
+    }
+
+    /** Back to painting: drop the last result and the strokes. */
+    fun restartPaint() {
+        val source = _ui.value.source ?: return
+        _ui.value.result?.recycle()
+        resetMask(source)
+        _ui.value = _ui.value.copy(result = null)
+    }
+
     fun consumeNotice() {
         _ui.value = _ui.value.copy(notice = null)
     }
@@ -118,6 +169,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 _ui.value.source?.recycle()
                 _ui.value.result?.recycle()
+                resetMask(bitmap)
                 _ui.value = _ui.value.copy(source = bitmap, result = null)
             } catch (e: Exception) {
                 _ui.value = _ui.value.copy(notice = "无法读取图片：${e.message}")
@@ -129,6 +181,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val state = _ui.value
         val source = state.source ?: return
         if (state.running || handle == 0L) return
+        if (state.mode == MODE_INPAINT) {
+            inpaint(source)
+            return
+        }
 
         viewModelScope.launch {
             state.result?.recycle()
@@ -154,6 +210,62 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 _ui.value = _ui.value.copy(
                     running = false,
                     notice = "处理失败：${e.message}"
+                )
+            }
+        }
+    }
+
+    /** LaMa object removal over the painted mask. */
+    private fun inpaint(source: Bitmap) {
+        val mask = maskBitmap ?: return
+        if (!_ui.value.hasMask) {
+            _ui.value = _ui.value.copy(notice = "请先涂抹要消除的区域")
+            return
+        }
+        viewModelScope.launch {
+            _ui.value = _ui.value.copy(
+                running = true, result = null, progress = Progress(6, 0f, "消除瑕疵")
+            )
+            try {
+                val result = withContext(Dispatchers.Default) {
+                    val w = source.width
+                    val h = source.height
+                    val src = ByteBuffer.allocateDirect(w * h * 4)
+                        .order(ByteOrder.nativeOrder())
+                    source.copyPixelsToBuffer(src)
+
+                    // Alpha channel of the paint layer becomes the mask bytes.
+                    val argb = IntArray(w * h)
+                    mask.getPixels(argb, 0, w, 0, 0, w, h)
+                    val maskBytes = ByteBuffer.allocateDirect(w * h)
+                    val chunk = ByteArray(w * h)
+                    for (i in argb.indices) {
+                        chunk[i] = if (android.graphics.Color.alpha(argb[i]) >= 128) 255.toByte() else 0
+                    }
+                    maskBytes.put(chunk)
+                    maskBytes.rewind()
+
+                    val dst = ByteBuffer.allocateDirect(w * h * 4)
+                        .order(ByteOrder.nativeOrder())
+                    NativeEnhancer.inpaint(
+                        handle, src, w, h, maskBytes, dst
+                    ) { _, percent, message ->
+                        _ui.value = _ui.value.copy(
+                            progress = Progress(6, percent, message)
+                        )
+                    }
+                    dst.rewind()
+                    Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888).also {
+                        it.copyPixelsFromBuffer(dst)
+                    }
+                }
+                _ui.value = _ui.value.copy(
+                    running = false, result = result, progress = Progress(6, 1f, "完成")
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "inpaint failed", e)
+                _ui.value = _ui.value.copy(
+                    running = false, notice = "消除失败：${e.message}"
                 )
             }
         }

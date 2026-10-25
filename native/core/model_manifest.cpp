@@ -126,6 +126,12 @@ bool ModelManifest::Load(const std::string& model_dir, const std::string& json,
         out.colorize.output_blob = c2->get_string("output_blob", out.colorize.output_blob);
         out.colorize.size = c2->get_int("size", out.colorize.size);
     }
+    if (const JsonValue* ip = root.find("inpaint")) {
+        resolve_weights(*ip, model_dir, out.inpaint.param_path, out.inpaint.bin_path);
+        out.inpaint.input_blob = ip->get_string("input_blob", out.inpaint.input_blob);
+        out.inpaint.output_blob = ip->get_string("output_blob", out.inpaint.output_blob);
+        out.inpaint.size = ip->get_int("size", out.inpaint.size);
+    }
 
     const std::string* paths[] = {
         &out.scrfd.param_path, &out.scrfd.bin_path,
@@ -145,6 +151,14 @@ bool ModelManifest::Load(const std::string& model_dir, const std::string& json,
     }
     if (!out.colorize.bin_path.empty() && !file_exists(out.colorize.bin_path)) {
         error = "model file missing: " + out.colorize.bin_path;
+        return false;
+    }
+    if (!out.inpaint.param_path.empty() && !file_exists(out.inpaint.param_path)) {
+        error = "model file missing: " + out.inpaint.param_path;
+        return false;
+    }
+    if (!out.inpaint.bin_path.empty() && !file_exists(out.inpaint.bin_path)) {
+        error = "model file missing: " + out.inpaint.bin_path;
         return false;
     }
 

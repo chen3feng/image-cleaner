@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.filled.Face
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Palette
@@ -36,9 +37,6 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -59,6 +57,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.imagecleaner.app.core.NativeEnhancer.MODE_AUTO
 import com.imagecleaner.app.core.NativeEnhancer.MODE_COLORIZE
 import com.imagecleaner.app.core.NativeEnhancer.MODE_FACES
+import com.imagecleaner.app.core.NativeEnhancer.MODE_INPAINT
 import com.imagecleaner.app.core.NativeEnhancer.MODE_UPSCALE
 import com.imagecleaner.app.data.ModelManager
 
@@ -119,6 +118,14 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 val source = state.source
                 when {
                     source == null -> EmptyState(pick)
+                    // Erase mode paints a mask until there is a result to compare.
+                    state.mode == MODE_INPAINT && state.result == null -> PaintView(
+                        image = source.asImageBitmap(),
+                        mask = viewModel.maskBitmap()?.asImageBitmap(),
+                        maskVersion = state.maskVersion,
+                        brushRadiusImage = state.brush * source.width,
+                        onPaint = viewModel::paintMask
+                    )
                     else -> CompareView(
                         before = source.asImageBitmap(),
                         after = state.result?.asImageBitmap()
@@ -235,7 +242,32 @@ private fun ControlPanel(
 
             Spacer(Modifier.height(16.dp))
 
-            if (state.mode == MODE_COLORIZE) {
+            if (state.mode == MODE_INPAINT) {
+                Text(
+                    if (state.result == null) "在图上涂抹要去掉的东西，再点「消除选区」"
+                    else "已完成，可继续涂抹后再次消除，或换一张",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(8.dp))
+                Text("画笔大小", style = MaterialTheme.typography.labelLarge)
+                Slider(
+                    value = state.brush,
+                    onValueChange = viewModel::setBrush,
+                    enabled = !state.running,
+                    valueRange = 0.01f..0.25f
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        onClick = viewModel::clearMask,
+                        enabled = state.hasMask && !state.running
+                    ) { Text("清除选区") }
+                    OutlinedButton(
+                        onClick = viewModel::restartPaint,
+                        enabled = state.result != null && !state.running
+                    ) { Text("重新涂抹") }
+                }
+            } else if (state.mode == MODE_COLORIZE) {
                 Text(
                     "适合黑白老照片：只补颜色，不改分辨率",
                     style = MaterialTheme.typography.bodySmall,
@@ -280,7 +312,8 @@ private fun ControlPanel(
                 Button(
                     onClick = viewModel::enhance,
                     enabled = state.source != null && !state.running &&
-                        state.modelState is ModelManager.State.Ready,
+                        state.modelState is ModelManager.State.Ready &&
+                        (state.mode != MODE_INPAINT || state.hasMask),
                     modifier = Modifier.weight(1f)
                 ) {
                     if (state.running) {
@@ -293,7 +326,7 @@ private fun ControlPanel(
                     } else {
                         Icon(Icons.Filled.AutoAwesome, contentDescription = null)
                         Spacer(Modifier.width(8.dp))
-                        Text("开始增强")
+                        Text(if (state.mode == MODE_INPAINT) "消除选区" else "开始增强")
                     }
                 }
             }
@@ -301,6 +334,7 @@ private fun ControlPanel(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ModeSelector(
     selected: Int,
@@ -312,21 +346,24 @@ private fun ModeSelector(
         Mode(MODE_AUTO, "智能增强", Icons.Filled.AutoAwesome),
         Mode(MODE_FACES, "人脸修复", Icons.Filled.Face),
         Mode(MODE_UPSCALE, "超分辨率", Icons.Filled.Upgrade),
-        Mode(MODE_COLORIZE, "上色", Icons.Filled.Palette)
+        Mode(MODE_COLORIZE, "上色", Icons.Filled.Palette),
+        Mode(MODE_INPAINT, "消除", Icons.Filled.AutoFixHigh)
     )
-    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-        modes.forEachIndexed { index, mode ->
-            SegmentedButton(
+    // Five modes no longer fit in one segmented row on a phone; chips wrap.
+    FlowRow(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        modes.forEach { mode ->
+            FilterChip(
                 selected = selected == mode.id,
                 enabled = enabled,
                 onClick = { onSelect(mode.id) },
-                shape = SegmentedButtonDefaults.itemShape(index, modes.size),
-                icon = {
-                    SegmentedButtonDefaults.Icon(active = selected == mode.id) {
-                        Icon(mode.icon, contentDescription = null, Modifier.size(16.dp))
-                    }
+                leadingIcon = {
+                    Icon(mode.icon, contentDescription = null, Modifier.size(18.dp))
                 },
-                label = { Text(mode.label, style = MaterialTheme.typography.labelMedium) }
+                label = { Text(mode.label, style = MaterialTheme.typography.labelLarge) }
             )
         }
     }

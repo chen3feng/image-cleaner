@@ -96,6 +96,48 @@ bool Pipeline::ensure_esrgan(std::string& error) {
     return true;
 }
 
+bool Pipeline::ensure_inpainter(std::string& error) {
+    if (manifest_.inpaint.param_path.empty() || manifest_.inpaint.bin_path.empty()) {
+        error = "inpainting model is not available";
+        return false;
+    }
+    if (!inpainter_) {
+        inpainter_ = std::make_unique<Inpainter>();
+        if (!inpainter_->Load(manifest_.inpaint, threads_, use_vulkan_, error)) return false;
+    }
+    return true;
+}
+
+bool Pipeline::Inpaint(const uint8_t* src_rgba, int src_w, int src_h,
+                       int src_stride, const uint8_t* mask, int mask_stride,
+                       uint8_t* dst_rgba, int dst_capacity, std::string& error,
+                       const ProgressFn& progress) {
+    if (!src_rgba || !dst_rgba || !mask || src_w <= 0 || src_h <= 0) {
+        error = "invalid inpainting buffers";
+        return false;
+    }
+    const int64_t need = static_cast<int64_t>(src_w) * src_h * 4;
+    if (static_cast<int64_t>(dst_capacity) < need) {
+        error = "output buffer too small";
+        return false;
+    }
+
+    const auto t = Clock::now();
+    if (progress) progress({IC_STAGE_INPAINT, 0.f, "消除瑕疵"});
+    if (!ensure_inpainter(error)) return false;
+
+    ImageRgb src;
+    rgba_to_rgb(src_rgba, src_w, src_h, src_stride, src);
+    ImageRgb out = inpainter_->Inpaint(src, mask, mask_stride, [&](float p) {
+        if (progress) progress({IC_STAGE_INPAINT, p, "消除瑕疵"});
+    });
+    PIXELUP_LOGI("inpaint: %lldms", ms_since(t));
+
+    rgb_to_rgba(out, dst_rgba, src_w * 4);
+    if (progress) progress({IC_STAGE_INPAINT, 1.f, "完成"});
+    return true;
+}
+
 bool Pipeline::ensure_colorizer(std::string& error) {
     if (manifest_.colorize.param_path.empty() || manifest_.colorize.bin_path.empty()) {
         error = "colorization model is not available";

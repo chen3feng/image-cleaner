@@ -12,6 +12,7 @@ C++ 管线不写死任何 blob 名，全部来自 `app/src/main/assets/models/mo
 | CodeFormer 生成器 | `input`（1×256×16×16，AdaIN 后的码本特征） | `output`（1×3×512×512，[-1,1]） |
 | Real-ESRGAN x4v3 | `input`（[0,1] RGB，任意 256 tile） | `output`（4x） |
 | DDColor 上色 | `input`（1×3×256×256，[0,1] 的中性灰 RGB） | `output`（1×2×256×256，Lab ab） |
+| LaMa 消除 | `input`（1×4×512×512，RGB 空洞置零 + 二值遮罩） | `output`（1×3×512×512，[0,1]） |
 
 另有 `codeformer-codebook.bin`：码本权重 1024×256 的裸 float32（1 MB），
 由 `export_codeformer.py` 一并导出。
@@ -42,6 +43,17 @@ C++ 管线不写死任何 blob 名，全部来自 `app/src/main/assets/models/mo
    所以 DDColor 固定走 CPU fp32 —— 256×256 只要 0.8 秒，比 Vulkan 路径还快。
 
 另外它的输入是 **RGB [0,1]**（不是 [-1,1]），ab 直接就是 Lab 色度（不要再乘 110）。
+
+## LaMa 消除的两个坑
+
+1. **Gather**：72 个 `Gather(axis=2, index=0|1)` 用来取频域的实部/虚部，ncnn
+   没有 Gather 层。改成 `Slice + Reshape`（都是原生层），`export_inpaint.py`
+   会按形状推断结果自动生成，并自检改写前后输出一致。
+2. **fp16 权重**：ONNX 是 weight-only fp16，pnnx 的形状推断不接受混合精度，
+   先整体加宽到 fp32 再转。
+
+运行时可开 fp16 storage（实测误差均值 0.0016，速度也最快），这点和 DDColor
+相反 —— DDColor 的色度对精度更敏感，必须 fp32。
 
 ## 步骤
 

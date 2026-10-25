@@ -64,6 +64,31 @@ extern "C" int ic_enhance(IC_Handle handle,
     return 0;
 }
 
+extern "C" int ic_inpaint(IC_Handle handle,
+                          const uint8_t* src_rgba, int src_w, int src_h,
+                          int src_stride, const uint8_t* mask, int mask_stride,
+                          uint8_t* dst_rgba, int dst_capacity,
+                          IC_ProgressFn progress, void* user_data) {
+    auto* ctx = static_cast<Context*>(handle);
+    if (!ctx) {
+        g_last_error = "null pipeline handle";
+        return -1;
+    }
+    ic::ProgressFn cb;
+    if (progress) {
+        cb = [progress, user_data](const ic::Progress& p) {
+            progress(p.stage, p.percent, p.message.c_str(), user_data);
+        };
+    }
+    std::string error;
+    if (!ctx->pipeline.Inpaint(src_rgba, src_w, src_h, src_stride, mask,
+                               mask_stride, dst_rgba, dst_capacity, error, cb)) {
+        g_last_error = error;
+        return -1;
+    }
+    return 0;
+}
+
 extern "C" const char* ic_last_error(void) {
     return g_last_error.c_str();
 }

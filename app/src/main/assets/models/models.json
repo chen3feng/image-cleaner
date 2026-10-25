@@ -1,9 +1,9 @@
 {
   "version": 1,
-  "base_url": "https://github.com/chen3feng/image-cleaner/releases/download/models-2/",
+  "base_url": "https://github.com/chen3feng/image-cleaner/releases/download/models-3/",
   "mirror_base_urls": [
-    "https://ghfast.top/https://github.com/chen3feng/image-cleaner/releases/download/models-2/",
-    "https://gh-proxy.com/https://github.com/chen3feng/image-cleaner/releases/download/models-2/"
+    "https://ghfast.top/https://github.com/chen3feng/image-cleaner/releases/download/models-3/",
+    "https://gh-proxy.com/https://github.com/chen3feng/image-cleaner/releases/download/models-3/"
   ],
   "files": [
     {
@@ -71,6 +71,18 @@
       "path": "colorize-ddcolor.ncnn.bin",
       "size": 115717696,
       "sha256": "6ec795185f0131ea039e55b3d5d2f366ce161c9b563154c948a10533d24476eb"
+    },
+    {
+      "id": "inpaint_param",
+      "path": "inpaint-lama.ncnn.param",
+      "size": 104885,
+      "sha256": "8a536d587aab155d8f67b059b162ca9f7166d84cbc80814bd9a77ab1046b5183"
+    },
+    {
+      "id": "inpaint_bin",
+      "path": "inpaint-lama.ncnn.bin",
+      "size": 102814544,
+      "sha256": "c8433b9d5a0078a6fe52cbc8205f192c022996ce14207e35a4b2ffeb72b25dbd"
     }
   ],
   "scrfd": {
@@ -136,5 +148,12 @@
     "input_blob": "input",
     "output_blob": "output",
     "size": 256
+  },
+  "inpaint": {
+    "param": "inpaint-lama.ncnn.param",
+    "bin": "inpaint-lama.ncnn.bin",
+    "input_blob": "input",
+    "output_blob": "output",
+    "size": 512
   }
 }
