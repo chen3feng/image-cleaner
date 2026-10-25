@@ -90,26 +90,31 @@ class ModelManager(context: Context) {
         val order = (bases.indices).map { (start + it) % bases.size }
 
         var lastError: Exception? = null
-        for ((attempt, i) in order.withIndex()) {
+        outer@ for ((attempt, i) in order.withIndex()) {
+            // Keep the partial file across sources: every mirror serves the
+            // same artifact, so the next attempt (or the user's retry) resumes
+            // instead of re-downloading ~100 MB on a flaky mobile link.
             try {
                 _state.value = State.Downloading(index, total, file.path, 0f)
                 fetch(bases[i] + "/" + file.path, part, file, index, total)
-                if (file.hashKnown && sha256(part) != file.sha256.lowercase()) {
-                    part.delete()
-                    throw IOException("checksum mismatch for ${file.path}")
-                }
-                if (!part.renameTo(target)) {
-                    part.copyTo(target, overwrite = true)
-                    part.delete()
-                }
-                preferredBase = i
-                return
             } catch (e: Exception) {
-                part.delete()
                 lastError = e
                 Log.w("PixelUp", "download attempt ${attempt + 1}/${bases.size} failed for " +
                     "${file.path}: ${e.message}")
+                continue@outer
             }
+            // The transfer finished; a checksum failure is not worth retrying
+            // against another mirror with the same bytes already on disk.
+            if (file.hashKnown && sha256(part) != file.sha256.lowercase()) {
+                part.delete()
+                throw IOException("checksum mismatch for ${file.path}")
+            }
+            if (!part.renameTo(target)) {
+                part.copyTo(target, overwrite = true)
+                part.delete()
+            }
+            preferredBase = i
+            return
         }
         throw IOException(
             "all ${bases.size} sources failed for ${file.path}: ${lastError?.message}",
@@ -118,12 +123,27 @@ class ModelManager(context: Context) {
     }
 
     private fun fetch(url: String, part: File, file: ModelFile, index: Int, total: Int) {
-        http.newCall(Request.Builder().url(url).build()).execute().use { response ->
+        // Resume from a previous partial transfer when the server honours
+        // Range; a 200 response means it does not, so restart from zero.
+        val already = part.length().takeIf { it > 0 } ?: 0L
+        if (file.size in 1..already) part.delete()
+        val resumeFrom = part.length()
+        val request = Request.Builder().url(url).apply {
+            if (resumeFrom > 0) header("Range", "bytes=$resumeFrom-")
+        }.build()
+
+        http.newCall(request).execute().use { response ->
             if (!response.isSuccessful) throw IOException("HTTP ${response.code} for ${file.path}")
             val body = response.body ?: throw IOException("empty body for ${file.path}")
-            val expected = body.contentLength().takeIf { it > 0 } ?: file.size.toLong()
-            var seen = 0L
-            part.outputStream().use { out ->
+            val appending = response.code == 206 && resumeFrom > 0
+            if (!appending && resumeFrom > 0) part.delete()
+            val totalBytes = if (body.contentLength() > 0) {
+                body.contentLength() + (if (appending) resumeFrom else 0)
+            } else {
+                file.size.toLong().takeIf { it > 0 } ?: -1
+            }
+            var seen = if (appending) resumeFrom else 0L
+            java.io.FileOutputStream(part, appending).use { out ->
                 body.byteStream().use { input ->
                     val buffer = ByteArray(64 * 1024)
                     while (true) {
@@ -131,9 +151,10 @@ class ModelManager(context: Context) {
                         if (read == -1) break
                         out.write(buffer, 0, read)
                         seen += read
-                        if (expected > 0) {
+                        if (totalBytes > 0) {
                             _state.value = State.Downloading(
-                                index, total, file.path, seen.toFloat() / expected
+                                index, total, file.path,
+                                (seen.toFloat() / totalBytes).coerceIn(0f, 1f)
                             )
                         }
                     }
