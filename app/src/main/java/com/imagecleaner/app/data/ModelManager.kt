@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
+import java.io.IOException
 import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 
@@ -34,9 +35,17 @@ class ModelManager(context: Context) {
     val state: StateFlow<State> = _state.asStateFlow()
 
     private val http = OkHttpClient.Builder()
-        .connectTimeout(20, TimeUnit.SECONDS)
+        // Short connect timeout: an unreachable GitHub endpoint should fail
+        // fast so the next mirror gets a turn (a photo-sized bundle is many
+        // files, and each dead-source attempt used to cost 15s).
+        .connectTimeout(8, TimeUnit.SECONDS)
         .readTimeout(60, TimeUnit.SECONDS)
+        .callTimeout(10, TimeUnit.MINUTES)
+        .retryOnConnectionFailure(true)
         .build()
+
+    /** Index of the base URL that last worked; tried first for later files. */
+    private var preferredBase = 0
 
     @WorkerThread
     fun ensureModels(manifest: ModelManifest) {
@@ -61,17 +70,57 @@ class ModelManager(context: Context) {
         return true
     }
 
+    /**
+     * Downloads one file, trying the primary base URL and then every mirror.
+     * Mirrors matter in practice: GitHub's release CDN (objects.githubusercontent.com)
+     * is often unreachable from mainland China even when github.com itself pings.
+     */
     private fun download(manifest: ModelManifest, file: ModelFile, index: Int, total: Int) {
-        val url = manifest.baseUrl.trimEnd('/') + "/" + file.path
         val part = File(modelDir, file.path + ".part")
         val target = File(modelDir, file.path)
         target.parentFile?.mkdirs()
 
-        _state.value = State.Downloading(index, total, file.path, 0f)
-        val request = Request.Builder().url(url).build()
-        http.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) error("HTTP ${response.code} for ${file.path}")
-            val body = response.body ?: error("empty body for ${file.path}")
+        val bases = buildList {
+            add(manifest.baseUrl)
+            addAll(manifest.mirrorBaseUrls)
+        }.map { it.trimEnd('/') }
+
+        // Start from whichever source worked last, then wrap around.
+        val start = preferredBase.coerceIn(0, bases.lastIndex)
+        val order = (bases.indices).map { (start + it) % bases.size }
+
+        var lastError: Exception? = null
+        for ((attempt, i) in order.withIndex()) {
+            try {
+                _state.value = State.Downloading(index, total, file.path, 0f)
+                fetch(bases[i] + "/" + file.path, part, file, index, total)
+                if (file.hashKnown && sha256(part) != file.sha256.lowercase()) {
+                    part.delete()
+                    throw IOException("checksum mismatch for ${file.path}")
+                }
+                if (!part.renameTo(target)) {
+                    part.copyTo(target, overwrite = true)
+                    part.delete()
+                }
+                preferredBase = i
+                return
+            } catch (e: Exception) {
+                part.delete()
+                lastError = e
+                Log.w("PixelUp", "download attempt ${attempt + 1}/${bases.size} failed for " +
+                    "${file.path}: ${e.message}")
+            }
+        }
+        throw IOException(
+            "all ${bases.size} sources failed for ${file.path}: ${lastError?.message}",
+            lastError
+        )
+    }
+
+    private fun fetch(url: String, part: File, file: ModelFile, index: Int, total: Int) {
+        http.newCall(Request.Builder().url(url).build()).execute().use { response ->
+            if (!response.isSuccessful) throw IOException("HTTP ${response.code} for ${file.path}")
+            val body = response.body ?: throw IOException("empty body for ${file.path}")
             val expected = body.contentLength().takeIf { it > 0 } ?: file.size.toLong()
             var seen = 0L
             part.outputStream().use { out ->
@@ -90,15 +139,6 @@ class ModelManager(context: Context) {
                     }
                 }
             }
-        }
-
-        if (file.hashKnown && sha256(part) != file.sha256.lowercase()) {
-            part.delete()
-            error("checksum mismatch for ${file.path}")
-        }
-        if (!part.renameTo(target)) {
-            part.copyTo(target, overwrite = true)
-            part.delete()
         }
     }
 

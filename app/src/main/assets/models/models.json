@@ -1,0 +1,121 @@
+{
+  "version": 1,
+  "base_url": "https://github.com/chen3feng/image-cleaner/releases/download/models-1/",
+  "mirror_base_urls": [
+    "https://ghfast.top/https://github.com/chen3feng/image-cleaner/releases/download/models-1/",
+    "https://gh-proxy.com/https://github.com/chen3feng/image-cleaner/releases/download/models-1/"
+  ],
+  "files": [
+    {
+      "id": "scrfd_param",
+      "path": "scrfd_10g.ncnn.param",
+      "size": 7694,
+      "sha256": "d5e2b7c8d40da61646227ffa701145e8b678fb7aff4d4bd69cd8754197966f21"
+    },
+    {
+      "id": "scrfd_bin",
+      "path": "scrfd_10g.ncnn.bin",
+      "size": 8461336,
+      "sha256": "75f669cc623908a6d4df2fc9c7bfe8b28d8cb42f35aed5ad3acf18e4591885b7"
+    },
+    {
+      "id": "codeformer_enc_param",
+      "path": "codeformer_enc.ncnn.param",
+      "size": 14438,
+      "sha256": "482acb04ba5a8ffc1f67e4b4ca4d5c56a5c1990aee394bcbe005b3df7f54a67a"
+    },
+    {
+      "id": "codeformer_enc_bin",
+      "path": "codeformer_enc.ncnn.bin",
+      "size": 98692392,
+      "sha256": "7504a406e57d4d2798ec9fef3f8a54792c35985e7d84beef8deea2c5a7fe19cc"
+    },
+    {
+      "id": "codeformer_gen_param",
+      "path": "codeformer_gen.ncnn.param",
+      "size": 9465,
+      "sha256": "444b7c1246ba17829054b12dcd069c20f26c1e68655644d80a03eafc5ccc72c6"
+    },
+    {
+      "id": "codeformer_gen_bin",
+      "path": "codeformer_gen.ncnn.bin",
+      "size": 68193620,
+      "sha256": "34910983a7d727c7c7047c9699c49ad13026a7aca9bb04551158553881bc6e90"
+    },
+    {
+      "id": "codeformer_codebook",
+      "path": "codeformer-codebook.bin",
+      "size": 1048576,
+      "sha256": "c006bc4830fd81f468c123c12dcacc3cad11f039e13a0914b16a464224d5dcac"
+    },
+    {
+      "id": "realesrgan_param",
+      "path": "realesrgan-x4v3.ncnn.param",
+      "size": 3991,
+      "sha256": "107531372a9728e651bcf6a226fabfde216a8d8dbf53e2b559764d6f0356ca2d"
+    },
+    {
+      "id": "realesrgan_bin",
+      "path": "realesrgan-x4v3.ncnn.bin",
+      "size": 2435272,
+      "sha256": "8fdd6052f8931091164a570ee7b5c5b2d1dcd991112d464eb9ae1a5b52ece553"
+    }
+  ],
+  "scrfd": {
+    "param": "scrfd_10g.ncnn.param",
+    "bin": "scrfd_10g.ncnn.bin",
+    "input_blob": "input",
+    "input_size": 640,
+    "strides": [
+      8,
+      16,
+      32
+    ],
+    "num_anchors": 2,
+    "score_blobs": [
+      "score_8",
+      "score_16",
+      "score_32"
+    ],
+    "bbox_blobs": [
+      "bbox_8",
+      "bbox_16",
+      "bbox_32"
+    ],
+    "kps_blobs": [
+      "kps_8",
+      "kps_16",
+      "kps_32"
+    ],
+    "score_threshold": 0.5,
+    "nms_threshold": 0.4,
+    "max_faces": 10
+  },
+  "codeformer": {
+    "param": "codeformer_enc.ncnn.param",
+    "bin": "codeformer_enc.ncnn.bin",
+    "input_blob": "input",
+    "logits_blob": "logits",
+    "lq_blob": "lq",
+    "codebook": "codeformer-codebook.bin",
+    "codebook_size": 1024,
+    "emb_dim": 256,
+    "latent_size": 16,
+    "size": 512,
+    "generator": {
+      "param": "codeformer_gen.ncnn.param",
+      "bin": "codeformer_gen.ncnn.bin",
+      "input_blob": "input",
+      "output_blob": "output"
+    }
+  },
+  "realesrgan": {
+    "param": "realesrgan-x4v3.ncnn.param",
+    "bin": "realesrgan-x4v3.ncnn.bin",
+    "input_blob": "input",
+    "output_blob": "output",
+    "scale": 4,
+    "tile": 256,
+    "tile_overlap": 32
+  }
+}

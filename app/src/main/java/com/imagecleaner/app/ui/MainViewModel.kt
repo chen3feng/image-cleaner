@@ -48,12 +48,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private val modelManager = ModelManager(app)
     private var handle: Long = 0L
+    private var creating = false
 
     init {
         viewModelScope.launch {
             modelManager.state.collect { state ->
                 _ui.value = _ui.value.copy(modelState = state)
-                if (state is ModelManager.State.Ready && handle == 0L) {
+                if (state is ModelManager.State.Ready && handle == 0L && !creating) {
+                    // The flag closes the window between the check and the
+                    // assignment below: Ready can be re-emitted while the
+                    // native pipeline is still loading its models, which used
+                    // to create (and leak) a second handle.
+                    creating = true
                     try {
                         withContext(Dispatchers.IO) {
                             handle = NativeEnhancer.create(
@@ -64,7 +70,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                                 useVulkan = true
                             )
                         }
+                        creating = false
                     } catch (e: Exception) {
+                        creating = false
                         _ui.value = _ui.value.copy(
                             modelState = ModelManager.State.Error(
                                 "推理引擎初始化失败：${e.message}"

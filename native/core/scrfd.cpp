@@ -161,15 +161,11 @@ std::vector<Face> Scrfd::Detect(const ImageRgb& image) const {
     std::sort(candidates.begin(), candidates.end(),
               [](const Face& a, const Face& b) { return a.score > b.score; });
 
-    __android_log_print(ANDROID_LOG_INFO, "PixelUpNative",
-                        "scrfd: %zu candidates (score>=%.2f)", candidates.size(),
+#ifndef NDEBUG
+    __android_log_print(ANDROID_LOG_DEBUG, "PixelUpNative",
+                        "scrfd: %zu candidates above %.2f", candidates.size(),
                         cfg_.score_threshold);
-    for (size_t i = 0; i < candidates.size() && i < 12; ++i) {
-        const Face& f = candidates[i];
-        __android_log_print(ANDROID_LOG_INFO, "PixelUpNative",
-                            "  cand %zu: score=%.3f box=%.0f,%.0f %.0fx%.0f", i,
-                            f.score, f.x1, f.y1, f.x2 - f.x1, f.y2 - f.y1);
-    }
+#endif
 
     // Greedy NMS, single class.
     std::vector<char> removed(candidates.size(), 0);

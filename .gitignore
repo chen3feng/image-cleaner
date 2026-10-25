@@ -15,10 +15,12 @@ keystore.properties
 # Native dependencies fetched by tools/setup_ncnn.sh (large prebuilt binaries)
 native/ncnn/
 
-# Downloaded / converted model binaries (use tools/pack_models.sh + GitHub Releases)
+# Downloaded / converted model binaries (use tools/pack_models.sh + GitHub Releases).
+# Only the binaries are ignored: app/src/main/assets/models/models.json is the
+# manifest and MUST be committed.
 app/src/main/assets/models/*.bin
 app/src/main/assets/models/*.param
-models/
+/models/
 models-release/
 tools/.cache/
 tools/convert/.cache/
@@ -34,3 +36,4 @@ venv/
 
 # macOS
 .DS_Store
+.kotlin/

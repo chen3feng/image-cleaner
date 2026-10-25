@@ -16,7 +16,10 @@ data class ModelManifest(
     val version: Int,
     val baseUrl: String,
     val files: List<ModelFile>,
-    val raw: String
+    val raw: String,
+    // Alternative prefixes tried in order when the primary base times out
+    // (GitHub's release CDN is frequently unreachable from mainland China).
+    val mirrorBaseUrls: List<String> = emptyList()
 ) {
     companion object {
         fun parse(json: String): ModelManifest {
@@ -36,13 +39,21 @@ data class ModelManifest(
                 }
             }
             val urlFromManifest = root.getString("base_url")
-            val url = BuildConfig.MODELS_BASE_URL_OVERRIDE
-                .takeIf { it.isNotBlank() } ?: urlFromManifest
+            val override = BuildConfig.MODELS_BASE_URL_OVERRIDE.takeIf { it.isNotBlank() }
+            val mirrorsJson = root.optJSONArray("mirror_base_urls")
+            val mirrors = buildList {
+                if (mirrorsJson != null) {
+                    for (i in 0 until mirrorsJson.length()) add(mirrorsJson.getString(i))
+                }
+            }
             return ModelManifest(
                 version = root.optInt("version", 1),
-                baseUrl = url,
+                // An explicit build-time override replaces both the primary and
+                // the mirrors: it exists for self-hosting the bundles.
+                baseUrl = override ?: urlFromManifest,
                 files = files,
-                raw = json
+                raw = json,
+                mirrorBaseUrls = if (override != null) emptyList() else mirrors
             )
         }
     }
