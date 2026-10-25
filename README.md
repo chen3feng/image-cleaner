@@ -160,9 +160,15 @@ App 代码为 Apache-2.0，但模型权重各有许可，商用前务必确认�
 GPU 行为 + 苹果生态的分发门槛**。如果后续验证 iOS 是硬需求，建议尽早把
 相册/分享/下载等平台操作收敛到一个 Kotlin/Swift 各自实现的薄接口后面。
 
+## 已知限制
+
+- 主力机型（骁龙 8 Gen 1）上单脸约 8 s、四人合照约 43 s；人脸多的照片线性增长
+- 人脸修复依赖 5 点对齐，侧脸/遮挡严重的脸效果会明显下降
+- CodeFormer 的 transformer 用 ncnn `MultiHeadAttention` 层，与 PyTorch 非逐位一致
+  （码本 argmax 约 32% 漂移），但视觉上难以分辨
+
 ## 路线图
 
-- [ ] 真机验证模型转换产物（当前管线按 ncnn 标准 blob 约定实现，待权重转换后联调）
 - [ ] armeabi-v7a / x86_64 ABI
 - [ ] 端上 benchmark 页面（各阶段耗时、GPU/CPU 开关）
 - [ ] 动漫模型（Real-ESRGAN animevideov3）、老照片去噪/上色

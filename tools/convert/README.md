@@ -1,34 +1,60 @@
 # 模型转换
 
 C++ 管线不写死任何 blob 名，全部来自 `app/src/main/assets/models/models.json`。
-转换的核心工作就是把转换器产出的 IO 名改成清单里的约定名。
+转换的核心工作就是让转换器产出的 IO 名与清单里的约定名一致。
 
 ## 约定
 
 | 模型 | 输入 | 输出 |
 |---|---|---|
-| SCRFD 2.5g | `input` | `score_8/16/32`、`bbox_8/16/32`、`kps_8/16/32`（9 个） |
-| CodeFormer | `input`（1×3×512×512，[-1,1]） | `output`（1×3×512×512，[-1,1]） |
+| SCRFD 10g | `input`（1×3×640×640，letterbox） | `score_8/16/32`、`bbox_8/16/32`、`kps_8/16/32`（9 个） |
+| CodeFormer 编码器 | `input`（1×3×512×512，[-1,1]） | `logits`（1×256×1024）、`lq`（1×256×16×16） |
+| CodeFormer 生成器 | `input`（1×256×16×16，AdaIN 后的码本特征） | `output`（1×3×512×512，[-1,1]） |
 | Real-ESRGAN x4v3 | `input`（[0,1] RGB，任意 256 tile） | `output`（4x） |
+
+另有 `codeformer-codebook.bin`：码本权重 1024×256 的裸 float32（1 MB），
+由 `export_codeformer.py` 一并导出。
+
+## 为什么 CodeFormer 要拆成两段
+
+原始导出的单图在 ncnn 上**能加载但结果不对**：
+
+1. `nn.MultiheadAttention` 被 pnnx 降级成 ncnn 的 `MultiHeadAttention` 层后
+   输出布局错误（单层实测：输入 256×512 出来 512×512×256）。
+2. 码本硬选择需要在 256×1024 的 logits 上做 argmax。任何用
+   `Reduction(max)` 表达的写法在 **Vulkan** 上都会算出 NaN/垃圾
+   （`exp((p-max)*1e9)`、迭代平方归一化都试过；CPU 正常、GPU 全错）。
+3. 换成显式 matmul/softmax 重写 attention 虽然与 PyTorch 完全一致，但 pnnx
+   会漏出 ncnn 不认识的不透明节点（`nn.Linear`/`nn.LayerNorm`），模型无法加载。
+
+所以最终方案把**码本 argmax + 查表 + AdaIN 放到 C++**
+（`native/core/codeformer.cpp`），图上只保留卷积/transformer/生成器，
+全部跑在 Vulkan 上。这样既精确（与 PyTorch 差 <2e-4）又快（fp16 shader）。
 
 ## 步骤
 
 ```bash
-convert_all.sh
-# 1) 下载 ncnn 工具（onnx2ncnn / ncnnoptimize）与 pnnx
-# 2) SCRFD: buffalo_sc.zip → det_2.5g.onnx → onnx2ncnn → 改名 → fp16
-# 3) CodeFormer: codeformer.pth → TorchScript → pnnx → 改名 → fp16
-# 4) Real-ESRGAN: .pth → ONNX → onnx2ncnn → 改名 → fp16
+# 需要已安装 torch/onnx/pnnx 依赖的 venv
+PYTHON=../.venv/bin/python bash convert_all.sh
 ```
+
+流程：`codeformer.pth` → TorchScript（编码器/生成器各一份）→ pnnx（fp16）→
+改名；SCRFD 从 insightface buffalo_l 取 `det_10g.onnx`，onnxsim 固定为
+1×3×640×640 后交给 pnnx；Real-ESRGAN 导出 TorchScript 后 pnnx。
 
 ## 转换后必须核对
 
-1. `ncnnoptimize` 无 unsupported op 警告；如有，优先换 pnnx 路线。
-2. 用 Netron 打开每个 `.param`：
-   - 第一层 `Input` 名与上表一致；
-   - SCRFD 九个输出名与 stride 对得上（8/16/32，每 stride 两组 anchor）；
-   - CodeFormer 输入固定 512、无动态维。
-3. SCRFD 输入尺寸：det_2.5g 通常是 640；若 Netron 显示 320，修改 manifest
-   的 `input_size`（native 不需要重编译，但要重新发版 APK）。
-4. fp16 后 CodeFormer 人脸不应有明显色块；若有问题，对该模型单独跑
-   `ncnnoptimize` flag=0（fp32）再观察对比。
+1. **pnnx 与 ncnn 运行时版本必须同期**：转换用 `PNNX_VERSION`，运行时用
+   `tools/setup_ncnn.sh` 的 `NCNN_VERSION`，默认都是 `20260526`。旧版运行时
+   解析新 pnnx 产物会在 `load_param` 里空指针崩溃。
+2. 用 Netron / grep 检查 `.param`：
+   - 不应出现 `nn.*` / `torch.*` / `aten::*` 等不透明层类型
+     （`grep -E '^(nn\.|torch\.|aten::)' *.param` 应为空）；
+   - SCRFD 九个输出按 stride 8/16/32 分组，每 stride 一组 score/bbox/kps；
+   - CodeFormer 输入固定 512，无动态维。
+3. **SCRFD 的 score 输出已内置 Sigmoid**（insightface 导出如此）。C++ 侧
+   不要再做一次 sigmoid，否则背景 anchor（raw=0）会变成 0.5 全部过阈值。
+4. SCRFD 输入尺寸见 manifest 的 `input_size`；换成 320 输入的模型时改清单即可，
+   不必重编 native。
+5. 精度回归：`export_codeformer.py` 末尾会打印 split 与官方路径的误差，
+   应在 1e-4 量级；若明显变大，说明 pnnx 降级出了问题。
