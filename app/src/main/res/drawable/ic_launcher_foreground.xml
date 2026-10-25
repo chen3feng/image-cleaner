@@ -1,0 +1,16 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Stylised up-arrow made of chunky pixels, centered in the adaptive safe zone -->
+    <group android:translateX="30" android:translateY="26">
+        <path android:fillColor="#7C9CFF" android:fillAlpha="0.35"
+            android:pathData="M6,40 h10 v10 h-10 z M22,40 h10 v10 h-10 z M38,40 h10 v10 h-10 z
+                M0,52 h10 v10 h-10 z M16,52 h10 v10 h-10 z M32,52 h10 v10 h-10 z" />
+        <path android:fillColor="#E8ECFF"
+            android:pathData="M14,30 h10 v-8 h8 v8 h8 v8 h-8 v8 h-8 v-8 h-10 z" />
+        <path android:fillColor="#7C9CFF"
+            android:pathData="M22,14 l8,8 h-16 z" />
+    </group>
+</vector>

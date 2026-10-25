@@ -1,0 +1,36 @@
+# Gradle / Android
+.gradle/
+build/
+local.properties
+*.iml
+.idea/
+.vscode/
+.cxx/
+captures/
+*.apk
+*.aab
+*.keystore
+keystore.properties
+
+# Native dependencies fetched by tools/setup_ncnn.sh (large prebuilt binaries)
+native/ncnn/
+
+# Downloaded / converted model binaries (use tools/pack_models.sh + GitHub Releases)
+app/src/main/assets/models/*.bin
+app/src/main/assets/models/*.param
+models/
+models-release/
+tools/.cache/
+tools/convert/.cache/
+tools/convert/build/
+tools/convert/dist/
+tools/convert/weights/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# macOS
+.DS_Store

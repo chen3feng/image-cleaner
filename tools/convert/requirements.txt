@@ -1,0 +1,9 @@
+# Python 3.10/3.11 recommended (torch may lack wheels for very new interpreters).
+# Install in a dedicated venv: python3.11 -m venv .venv && . .venv/bin/activate
+torch>=2.1
+torchvision  # basicsr.utils imports torchvision.utils
+numpy<2
+onnx>=1.15
+onnxruntime>=1.17
+onnxsim>=0.4.33
+opencv-python-headless>=4.8
