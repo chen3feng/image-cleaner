@@ -31,7 +31,35 @@ C++ 管线不写死任何 blob 名，全部来自 `app/src/main/assets/models/mo
 
 所以最终方案把**码本 argmax + 查表 + AdaIN 放到 C++**
 （`native/core/codeformer.cpp`），图上只保留卷积/transformer/生成器，
-全部跑在 Vulkan 上。这样既精确（与 PyTorch 差 <2e-4）又快（fp16 shader）。
+全部跑在 Vulkan 上。
+
+### pnnx 的 2 输入 MultiHeadAttention 陷阱（五官变形的原因）
+
+拆分后仍然发现人脸五官经常变形。逐层对比定位到 attention 的输入绑定：
+
+CodeFormer 的 `TransformerSALayer` 写的是
+
+```python
+q = k = self.with_pos_embed(norm1(tgt), pos)
+self.self_attn(q, k, value=norm1(tgt))
+```
+
+`q` 和 `k` 是**同一个 tensor**，而 `v` 不带位置编码。pnnx 看到 q、k 同源，
+就发出一个 **2 输入**的 ncnn `MultiHeadAttention`；ncnn 对 2 输入的解释是
+`(q, k=v)`，于是悄悄把 `k` 绑成了 `v` —— 位置编码丢了。9 层 transformer 全部
+用错误的 key 做注意力，实测码本 argmax 只有 **63.7%** 与 PyTorch 一致，生成器
+自然把五官画歪。
+
+修法是让 q、k 来自两个独立的 `norm1` 调用（数值完全相同，但 blob 不同），
+pnnx 就会发出正确的 **3 输入** `(q, k, v)`。改完后 argmax 一致率升到 **99.2%**
+（剩余差异来自 fp16 存储），人脸恢复正常。`export_codeformer.py` 里的重复
+`norm1` 是刻意保留的，不要“优化”掉。
+
+### 精度自检
+
+`export_codeformer.py` 末尾会打印 split 与官方路径的误差（约 1e-4）。
+另外可以用 `tools/convert/diag_encoder.py` + `diag_ncnn_enc.cpp` 在 macOS 上
+直接对比 torch / ONNX / ncnn 的 argmax 一致率，改转换参数后先跑它再上真机。
 
 ## DDColor 上色的两个坑
 

@@ -88,16 +88,25 @@ rename "$BUILD/scrfd_10g.static.ncnn.param" "$DIST/scrfd_10g.ncnn.param" \
     --rename out6=kps_8    --rename out7=kps_16   --rename out8=kps_32
 cp "$BUILD/scrfd_10g.static.ncnn.bin" "$DIST/scrfd_10g.ncnn.bin"
 
-# ---------------- CodeFormer (TorchScript -> pnnx) ----------------
+# ---------------- CodeFormer (TorchScript -> pnnx, split encoder/generator) ----------------
+# The codebook argmax + lookup + AdaIN run in C++ (native/core/codeformer.cpp),
+# so the exported graphs stop at the logits / resume from the quantised feature.
 if [[ -f "$WEIGHTS/codeformer.pth" ]]; then
-    if [[ ! -f "$BUILD/codeformer.pt" ]]; then
+    if [[ ! -f "$BUILD/codeformer_enc.pt" || ! -f "$BUILD/codeformer_gen.pt" ]]; then
         "$PYTHON" "$SCRIPT_DIR/export_codeformer.py" \
             --weights "$WEIGHTS/codeformer.pth" --out-dir "$BUILD"
     fi
-    run_pnnx codeformer.pt "[1,3,512,512]"
-    rename "$BUILD/codeformer.ncnn.param" "$DIST/codeformer-fp16.ncnn.param" \
-        --rename in0=input --rename out0=output --rename 1=input
-    cp "$BUILD/codeformer.ncnn.bin" "$DIST/codeformer-fp16.ncnn.bin"
+    run_pnnx codeformer_enc.pt "[1,3,512,512]"
+    rename "$BUILD/codeformer_enc.ncnn.param" "$DIST/codeformer_enc.ncnn.param" \
+        --rename in0=input --rename out0=logits --rename out1=lq
+    cp "$BUILD/codeformer_enc.ncnn.bin" "$DIST/codeformer_enc.ncnn.bin"
+
+    run_pnnx codeformer_gen.pt "[1,256,16,16]"
+    rename "$BUILD/codeformer_gen.ncnn.param" "$DIST/codeformer_gen.ncnn.param" \
+        --rename in0=input --rename out0=output
+    cp "$BUILD/codeformer_gen.ncnn.bin" "$DIST/codeformer_gen.ncnn.bin"
+
+    cp "$BUILD/codeformer-codebook.bin" "$DIST/codeformer-codebook.bin"
 else
     echo "SKIP CodeFormer: missing $WEIGHTS/codeformer.pth"
 fi

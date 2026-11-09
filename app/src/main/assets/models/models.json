@@ -1,9 +1,9 @@
 {
   "version": 1,
-  "base_url": "https://github.com/chen3feng/image-cleaner/releases/download/models-3/",
+  "base_url": "https://github.com/chen3feng/image-cleaner/releases/download/models-4/",
   "mirror_base_urls": [
-    "https://ghfast.top/https://github.com/chen3feng/image-cleaner/releases/download/models-3/",
-    "https://gh-proxy.com/https://github.com/chen3feng/image-cleaner/releases/download/models-3/"
+    "https://ghfast.top/https://github.com/chen3feng/image-cleaner/releases/download/models-4/",
+    "https://gh-proxy.com/https://github.com/chen3feng/image-cleaner/releases/download/models-4/"
   ],
   "files": [
     {
@@ -21,8 +21,8 @@
     {
       "id": "codeformer_enc_param",
       "path": "codeformer_enc.ncnn.param",
-      "size": 14438,
-      "sha256": "482acb04ba5a8ffc1f67e4b4ca4d5c56a5c1990aee394bcbe005b3df7f54a67a"
+      "size": 14793,
+      "sha256": "b61f1bd74cb739e21b4839c831016e5658e2fa28e0c17938db2ecee40202b203"
     },
     {
       "id": "codeformer_enc_bin",

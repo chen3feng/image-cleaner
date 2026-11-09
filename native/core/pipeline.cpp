@@ -214,7 +214,8 @@ void Pipeline::paste_face(ImageRgb& canvas, int scale, const Face& face,
 
 bool Pipeline::Enhance(const uint8_t* src_rgba, int src_w, int src_h,
                        int src_stride, uint8_t* dst_rgba, int dst_capacity,
-                       int mode, float fidelity, int target_scale,
+                       int mode, float fidelity, float color_strength,
+                       int target_scale,
                        int& out_w, int& out_h, std::string& error,
                        const ProgressFn& progress) {
     if (!src_rgba || !dst_rgba || src_w <= 0 || src_h <= 0) {
@@ -230,7 +231,9 @@ bool Pipeline::Enhance(const uint8_t* src_rgba, int src_w, int src_h,
         const auto t = Clock::now();
         if (progress) progress({IC_STAGE_COLORIZE, 0.f, "照片上色"});
         if (!ensure_colorizer(error)) return false;
-        ImageRgb colored = colorizer_->Colorize(src);
+        ImageRgb colored = colorizer_->Colorize(src, color_strength, [&](float p) {
+            if (progress) progress({IC_STAGE_COLORIZE, p, "照片上色"});
+        });
         PIXELUP_LOGI("colorize: %lldms", ms_since(t));
         if (progress) progress({IC_STAGE_COLORIZE, 1.f, "照片上色"});
         out_w = colored.w;

@@ -39,7 +39,7 @@ object NativeEnhancer {
         handle: Long,
         src: ByteBuffer, srcW: Int, srcH: Int,
         dst: ByteBuffer, dstCapacity: Int,
-        mode: Int, fidelity: Float, targetScale: Int,
+        mode: Int, fidelity: Float, colorStrength: Float, targetScale: Int,
         callbackId: Long
     ): IntArray?
 
@@ -92,7 +92,7 @@ object NativeEnhancer {
         handle: Long,
         src: ByteBuffer, srcW: Int, srcH: Int,
         dst: ByteBuffer,
-        mode: Int, fidelity: Float, targetScale: Int,
+        mode: Int, fidelity: Float, colorStrength: Float, targetScale: Int,
         listener: ProgressListener? = null
     ): Pair<Int, Int> {
         val id = listener?.let {
@@ -103,7 +103,7 @@ object NativeEnhancer {
         try {
             val dims = nativeEnhance(
                 handle, src, srcW, srcH, dst, dst.capacity(),
-                mode, fidelity, targetScale, id
+                mode, fidelity, colorStrength, targetScale, id
             ) ?: throw IOException(nativeLastError())
             return dims[0] to dims[1]
         } finally {

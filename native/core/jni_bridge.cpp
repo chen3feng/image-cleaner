@@ -109,8 +109,8 @@ Java_com_imagecleaner_app_core_NativeEnhancer_nativeInpaint(
 extern "C" JNIEXPORT jintArray JNICALL
 Java_com_imagecleaner_app_core_NativeEnhancer_nativeEnhance(
     JNIEnv* env, jclass, jlong handle, jobject src, jint src_w, jint src_h,
-    jobject dst, jint dst_capacity, jint mode, jfloat fidelity, jint target_scale,
-    jlong callback_id) {
+    jobject dst, jint dst_capacity, jint mode, jfloat fidelity,
+    jfloat color_strength, jint target_scale, jlong callback_id) {
     auto* h = reinterpret_cast<IC_Handle>(handle);
     auto* src_ptr = static_cast<uint8_t*>(env->GetDirectBufferAddress(src));
     auto* dst_ptr = static_cast<uint8_t*>(env->GetDirectBufferAddress(dst));
@@ -119,8 +119,8 @@ Java_com_imagecleaner_app_core_NativeEnhancer_nativeEnhance(
     ProgressContext ctx{callback_id};
     int out_w = 0, out_h = 0;
     int rc = ic_enhance(h, src_ptr, src_w, src_h, src_w * 4, dst_ptr,
-                        dst_capacity, mode, fidelity, target_scale,
-                        &out_w, &out_h,
+                        dst_capacity, mode, fidelity, color_strength,
+                        target_scale, &out_w, &out_h,
                         callback_id != 0 ? progress_trampoline : nullptr, &ctx);
     if (rc != 0) return nullptr;
 

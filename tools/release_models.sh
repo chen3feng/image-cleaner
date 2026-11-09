@@ -17,4 +17,4 @@ command -v gh >/dev/null || { echo "gh CLI required" >&2; exit 1; }
 cd "$PROJECT_ROOT"
 gh release create "$TAG" "$DIR"/* \
     --title "Model bundle $TAG" \
-    --notes "ncnn models (SCRFD 2.5g, CodeFormer fp16, Real-ESRGAN x4v3). Do not edit in place; publish a new tag instead."
+    --notes "ncnn models: SCRFD-10G detector, split CodeFormer (encoder + generator, fp16), Real-ESRGAN x4v3, DDColor, LaMa. Do not edit in place; publish a new tag instead."

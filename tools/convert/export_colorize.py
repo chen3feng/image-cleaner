@@ -37,6 +37,13 @@ def widen_to_fp32(model: onnx.ModelProto) -> onnx.ModelProto:
             for attr in node.attribute:
                 if attr.name == "to" and attr.i == TensorProto.FLOAT16:
                     attr.i = TensorProto.FLOAT
+        elif node.op_type == "Constant":
+            # Some exports inline fp16 constants instead of initializers; the
+            # widened graph would otherwise mix float and float16 operands.
+            for attr in node.attribute:
+                if (attr.name == "value" and attr.t.data_type == TensorProto.FLOAT16):
+                    arr = numpy_helper.to_array(attr.t).astype("float32")
+                    attr.t.CopyFrom(numpy_helper.from_array(arr, attr.t.name))
     for init in graph.initializer:
         if init.data_type == TensorProto.FLOAT16:
             init.CopyFrom(
@@ -48,7 +55,7 @@ def widen_to_fp32(model: onnx.ModelProto) -> onnx.ModelProto:
     return model
 
 
-def replace_einsum(model: onnx.ModelProto) -> onnx.ModelProto:
+def replace_einsum(model: onnx.ModelProto, size: int) -> onnx.ModelProto:
     graph = model.graph
     targets = [n for n in graph.node if n.op_type == "Einsum"]
     if not targets:
@@ -63,9 +70,12 @@ def replace_einsum(model: onnx.ModelProto) -> onnx.ModelProto:
     a, b = node.input
     out = node.output[0]
 
+    # The decoder upsamples the feature map back to the input resolution before
+    # the query/feature product, so H=W=size (not size/4).
+    feat = size
     graph.initializer.extend([
-        helper.make_tensor("e_bmat_shape", TensorProto.INT64, [3], [1, 256, 256 * 256]),
-        helper.make_tensor("e_out_shape", TensorProto.INT64, [4], [1, 100, 256, 256]),
+        helper.make_tensor("e_bmat_shape", TensorProto.INT64, [3], [1, 256, feat * feat]),
+        helper.make_tensor("e_out_shape", TensorProto.INT64, [4], [1, 100, feat, feat]),
     ])
     new_nodes = [
         helper.make_node("Reshape", [b, "e_bmat_shape"], ["e_bmat"], name="e_bmat"),
@@ -79,10 +89,10 @@ def replace_einsum(model: onnx.ModelProto) -> onnx.ModelProto:
     return model
 
 
-def self_check(original_path: str, fixed_path: str, out_dir: str) -> None:
+def self_check(original_path: str, fixed_path: str, size: int) -> None:
     """The rewrite must be numerically identical to the source graph."""
     rng = np.random.default_rng(0)
-    x = rng.random((1, 3, 256, 256), dtype=np.float32)
+    x = rng.random((1, 3, size, size), dtype=np.float32)
     ref = ort.InferenceSession(original_path, providers=["CPUExecutionProvider"]).run(
         None, {"input": x})[0]
     got = ort.InferenceSession(fixed_path, providers=["CPUExecutionProvider"]).run(
@@ -97,6 +107,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--onnx", required=True, help="ddcolor-fp16.onnx")
     parser.add_argument("--out-dir", default="build")
+    parser.add_argument("--size", type=int, default=256, help="square input size")
     parser.add_argument("--skip-check", action="store_true")
     args = parser.parse_args()
 
@@ -107,14 +118,14 @@ def main() -> None:
 
     # DDColor's ONNX declares its input as "input"; after pnnx the blobs are
     # renamed to input/output to match the manifest contract.
-    fixed = replace_einsum(model)
+    fixed = replace_einsum(model, args.size)
     onnx.checker.check_model(fixed)
     out_path = os.path.join(args.out_dir, "colorize.onnx")
     onnx.save(fixed, out_path)
     print(f"wrote {out_path}")
 
     if not args.skip_check:
-        self_check(base, out_path, args.out_dir)
+        self_check(base, out_path, args.size)
     os.remove(base)
 
 

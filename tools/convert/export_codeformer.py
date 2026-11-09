@@ -29,6 +29,7 @@ import argparse
 import os
 import sys
 
+import numpy as np
 import torch
 import torch.nn as nn
 
@@ -63,18 +64,41 @@ class EncoderNet(nn.Module):
       logits  (1, 256, 1024)   per-token codebook scores
       lq_feat (1, 256, 16, 16) encoder bottleneck used for AdaIN style stats
 
-    The transformer uses nn.MultiheadAttention, which pnnx maps to ncnn's
-    MultiHeadAttention layer. That layer is not bit-exact against PyTorch
-    (measured ~32% codebook argmax drift on a test face), but the resulting
-    restoration is visually indistinguishable. An explicit matmul/softmax
-    rewrite was tried and matched PyTorch exactly in TorchScript, yet pnnx
-    leaked opaque nn.Linear/nn.LayerNorm nodes for it that ncnn cannot load,
-    so the stock module stays.
+    The transformer is reimplemented instead of calling TransformerSALayer
+    directly, because of a pnnx lowering bug. CodeFormer's layer does
+
+        q = k = norm1(tgt) + pos
+        self_attn(q, k, value=norm1(tgt))
+
+    pnnx sees q and k as the same blob and emits a *2-input* ncnn
+    MultiHeadAttention. ncnn's 2-input form means (q, k=v), which silently ties
+    k to v — but here k carries the position embedding while v does not. Every
+    layer therefore attended with the wrong keys; measured on a fixed input,
+    only 63.7% of the codebook argmax indices matched PyTorch and restored
+    faces were visibly distorted (五官变形).
+
+    Computing norm1 twice keeps q and k in distinct blobs with identical
+    values, so pnnx emits the correct 3-input form (q, k, v). Argmax agreement
+    rises to 99.2% (the residual is fp16 storage), and the graph still runs on
+    Vulkan. Do not "simplify" the duplicate norm1 call.
     """
 
     def __init__(self, net: nn.Module):
         super().__init__()
         self.net = net
+
+    @staticmethod
+    def _layer(layer, tgt, pos_emb):
+        norm_q = layer.norm1(tgt)
+        norm_k = layer.norm1(tgt)  # deliberately separate; see class docstring
+        q = norm_q + pos_emb
+        k = norm_k + pos_emb
+        v = norm_q
+        attn = layer.self_attn(q, k, v, need_weights=False)[0]
+        tgt = tgt + attn
+
+        ffn = layer.linear2(layer.activation(layer.linear1(layer.norm2(tgt))))
+        return tgt + ffn
 
     def forward(self, x):
         net = self.net
@@ -85,7 +109,7 @@ class EncoderNet(nn.Module):
         pos_emb = net.position_emb.unsqueeze(1).repeat(1, x.shape[0], 1)
         query_emb = net.feat_emb(lq_feat.flatten(2).permute(2, 0, 1))
         for layer in net.ft_layers:
-            query_emb = layer(query_emb, query_pos=pos_emb)
+            query_emb = self._layer(layer, query_emb, pos_emb)
 
         logits = net.idx_pred_layer(query_emb).permute(1, 0, 2)
         return logits, lq_feat
@@ -126,6 +150,13 @@ def main() -> None:
     gen_path = os.path.join(args.out_dir, "codeformer_gen.pt")
     torch.jit.trace(gen, quant, strict=False).save(gen_path)
     print(f"wrote {gen_path}")
+
+    # The C++ side does the argmax + lookup itself and needs the codebook as a
+    # bare float32 matrix (codebook_size x emb_dim, row-major).
+    codebook = net.quantize.embedding.weight.detach().cpu().numpy().astype(np.float32)
+    cb_path = os.path.join(args.out_dir, "codeformer-codebook.bin")
+    codebook.tofile(cb_path)
+    print(f"wrote {cb_path} {codebook.shape}")
 
     # Sanity check: full reference path vs the split path with exact hardening.
     with torch.no_grad():

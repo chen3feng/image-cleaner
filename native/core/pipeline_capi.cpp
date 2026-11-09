@@ -36,7 +36,8 @@ extern "C" void ic_destroy(IC_Handle handle) {
 extern "C" int ic_enhance(IC_Handle handle,
                           const uint8_t* src_rgba, int src_w, int src_h,
                           int src_stride, uint8_t* dst_rgba, int dst_capacity,
-                          int mode, float fidelity, int target_scale,
+                          int mode, float fidelity, float color_strength,
+                          int target_scale,
                           int* out_w, int* out_h,
                           IC_ProgressFn progress, void* user_data) {
     auto* ctx = static_cast<Context*>(handle);
@@ -54,7 +55,8 @@ extern "C" int ic_enhance(IC_Handle handle,
     int w = 0, h = 0;
     std::string error;
     if (!ctx->pipeline.Enhance(src_rgba, src_w, src_h, src_stride, dst_rgba,
-                               dst_capacity, mode, fidelity, target_scale,
+                               dst_capacity, mode, fidelity, color_strength,
+                               target_scale,
                                w, h, error, cb)) {
         g_last_error = error;
         return -1;

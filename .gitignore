@@ -37,3 +37,4 @@ venv/
 # macOS
 .DS_Store
 .kotlin/
+tools/convert/build*/

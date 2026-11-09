@@ -32,7 +32,7 @@ public:
     // dst must have capacity out_w*out_h*4 bytes; returns false on error.
     bool Enhance(const uint8_t* src_rgba, int src_w, int src_h, int src_stride,
                  uint8_t* dst_rgba, int dst_capacity,
-                 int mode, float fidelity, int target_scale,
+                 int mode, float fidelity, float color_strength, int target_scale,
                  int& out_w, int& out_h, std::string& error,
                  const ProgressFn& progress = {});
 

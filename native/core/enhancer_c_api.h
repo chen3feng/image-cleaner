@@ -44,10 +44,12 @@ void ic_destroy(IC_Handle handle);
 // dst is caller-allocated with capacity dst_capacity_bytes; the produced frame
 // is *out_w * *out_h * 4, where dims = src * (mode == FACES ? 1 : target_scale).
 // Returns 0 on success, negative on failure (see ic_last_error()).
+// color_strength multiplies the predicted chroma in IC_MODE_COLORIZE (1 =
+// model output, higher = more vivid); ignored by the other modes.
 int ic_enhance(IC_Handle handle,
                const uint8_t* src_rgba, int src_w, int src_h, int src_stride,
                uint8_t* dst_rgba, int dst_capacity_bytes,
-               int mode, float fidelity, int target_scale,
+               int mode, float fidelity, float color_strength, int target_scale,
                int* out_w, int* out_h,
                IC_ProgressFn progress, void* user_data);
 
