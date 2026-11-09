@@ -72,13 +72,19 @@ pnnx 就会发出正确的 **3 输入** `(q, k, v)`。改完后 argmax 一致率
 
 另外它的输入是 **RGB [0,1]**（不是 [-1,1]），ab 直接就是 Lab 色度（不要再乘 110）。
 
-## LaMa 消除的两个坑
+## LaMa 消除的三个坑
 
 1. **Gather**：72 个 `Gather(axis=2, index=0|1)` 用来取频域的实部/虚部，ncnn
    没有 Gather 层。改成 `Slice + Reshape`（都是原生层），`export_inpaint.py`
    会按形状推断结果自动生成，并自检改写前后输出一致。
 2. **fp16 权重**：ONNX 是 weight-only fp16，pnnx 的形状推断不接受混合精度，
    先整体加宽到 fp32 再转。
+3. **MatMul 没有 Vulkan 实现**：DFT 在这个 ONNX 里是 432 个 MatMul（288 个
+   「常数 DFT 矩阵 @ 激活」，144 个「激活 @ 常数矩阵」）。ncnn 的 `MatMul`
+   只有 CPU 实现，每次都要把整张特征图从 GPU 搬回 CPU 再搬回去，小米 12 上
+   一次消除要 19–22 s。`export_inpaint.py` 的 `matmul_to_conv` 把被收缩的轴
+   挪到通道维，每个 MatMul 变成 `Transpose + 1×1 Conv + Transpose`，算术完全
+   等价（自检 max |diff| = 0），全部跑在 Vulkan 上；同一台机器降到 1.5–2 s。
 
 运行时可开 fp16 storage（实测误差均值 0.0016，速度也最快），这点和 DDColor
 相反 —— DDColor 的色度对精度更敏感，必须 fp32。

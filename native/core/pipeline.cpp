@@ -67,6 +67,16 @@ bool Pipeline::Init(const std::string& model_dir, const std::string& manifest_js
     const bool ok = ModelManifest::Load(model_dir, manifest_json, manifest_, error);
     PIXELUP_LOGI("init: threads=%d request_vulkan=%d gpu_count=%d", threads_,
                  use_vulkan ? 1 : 0, ncnn::get_gpu_count());
+#if NCNN_VULKAN
+    if (use_vulkan_) {
+        if (const auto* gpu = ncnn::get_gpu_device()) {
+            const auto& info = gpu->info;
+            PIXELUP_LOGI("gpu: %s fp16 packed=%d storage=%d arithmetic=%d",
+                         info.device_name(), info.support_fp16_packed(),
+                         info.support_fp16_storage(), info.support_fp16_arithmetic());
+        }
+    }
+#endif
     return ok;
 }
 
@@ -112,6 +122,7 @@ bool Pipeline::Inpaint(const uint8_t* src_rgba, int src_w, int src_h,
                        int src_stride, const uint8_t* mask, int mask_stride,
                        uint8_t* dst_rgba, int dst_capacity, std::string& error,
                        const ProgressFn& progress) {
+    std::lock_guard<std::mutex> lock(mutex_);
     if (!src_rgba || !dst_rgba || !mask || src_w <= 0 || src_h <= 0) {
         error = "invalid inpainting buffers";
         return false;
@@ -212,12 +223,41 @@ void Pipeline::paste_face(ImageRgb& canvas, int scale, const Face& face,
     }
 }
 
+bool Pipeline::Preload(int mode, std::string& error) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    const auto t = Clock::now();
+    bool ok = false;
+    switch (mode) {
+        case IC_MODE_INPAINT:
+            ok = ensure_inpainter(error);
+            break;
+        case IC_MODE_COLORIZE:
+            ok = ensure_colorizer(error);
+            break;
+        case IC_MODE_UPSCALE:
+            ok = ensure_esrgan(error);
+            break;
+        case IC_MODE_FACES:
+            ok = ensure_scrfd(error) && ensure_codeformer(error);
+            break;
+        case IC_MODE_AUTO:
+            ok = ensure_scrfd(error) && ensure_esrgan(error) && ensure_codeformer(error);
+            break;
+        default:
+            error = "unknown mode";
+            return false;
+    }
+    PIXELUP_LOGI("preload mode=%d: %lldms", mode, ms_since(t));
+    return ok;
+}
+
 bool Pipeline::Enhance(const uint8_t* src_rgba, int src_w, int src_h,
                        int src_stride, uint8_t* dst_rgba, int dst_capacity,
                        int mode, float fidelity, float color_strength,
                        int target_scale,
                        int& out_w, int& out_h, std::string& error,
                        const ProgressFn& progress) {
+    std::lock_guard<std::mutex> lock(mutex_);
     if (!src_rgba || !dst_rgba || src_w <= 0 || src_h <= 0) {
         error = "invalid input buffer";
         return false;

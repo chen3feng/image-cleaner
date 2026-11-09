@@ -62,6 +62,12 @@ int ic_inpaint(IC_Handle handle,
                uint8_t* dst_rgba, int dst_capacity,
                IC_ProgressFn progress, void* user_data);
 
+// Loads the model(s) that [mode] needs before the first real call, so the
+// first tap does not pay several seconds of model loading. Safe to call from
+// any thread; calls are serialised with ic_enhance/ic_inpaint. Returns 0 on
+// success, negative on failure.
+int ic_preload(IC_Handle handle, int mode);
+
 // Thread-local, never NULL.
 const char* ic_last_error(void);
 

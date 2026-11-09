@@ -15,6 +15,13 @@ Two rewrites are needed before pnnx can emit a loadable ncnn model:
 2. The ONNX is weight-only fp16; pnnx's shape inference rejects the mixed
    fp16/fp32 typing, so the graph is widened to fp32 first.
 
+A third rewrite is needed for speed, not correctness: the DFT matrices are
+expressed as 432 MatMuls, and ncnn's MatMul has no Vulkan implementation, so
+every one of them copies its input to the CPU and back (288 of them are in the
+innermost loop of every FFC block). Each MatMul is the same arithmetic as a
+1x1 convolution once the contracted axis is moved into the channel position,
+and convolution does run on Vulkan; `matmul_to_conv` does that swap.
+
 Input  : [1, 4, 512, 512] - RGB (masked area zeroed) + binary mask, values 0..1
 Output : [1, 3, 512, 512] - inpainted RGB, values 0..1
 
@@ -100,6 +107,87 @@ def replace_gathers(model: onnx.ModelProto) -> onnx.ModelProto:
     return model
 
 
+def matmul_to_conv(model: onnx.ModelProto) -> onnx.ModelProto:
+    """Turn the DFT MatMuls into 1x1 convolutions.
+
+    A MatMul whose operand is constant is a linear map over one axis. Moving
+    that axis into the channel position turns it into a 1x1 convolution, which
+    is the same arithmetic but runs on ncnn's Vulkan backend. The LaMa graph
+    has 432 of these, 288 of them inside the FFC frequency branch, and ncnn
+    falls back to the CPU for every one.
+    """
+    model = shape_inference.infer_shapes(model)
+    graph = model.graph
+    shapes = {
+        v.name: [d.dim_value for d in v.type.tensor_type.shape.dim]
+        for v in list(graph.value_info) + list(graph.input) + list(graph.output)
+    }
+    inits = {i.name: i for i in graph.initializer}
+
+    new_nodes = []
+    new_inits = []
+    converted = 0
+    for node in graph.node:
+        if node.op_type != "MatMul":
+            new_nodes.append(node)
+            continue
+        a, b = node.input
+        if (a in inits) == (b in inits):
+            raise SystemExit(f"unexpected MatMul operands on {node.name}")
+
+        if b in inits:
+            # out[..., n] = sum_k a[..., k] * b[k, n]; contract the last axis.
+            a_shape = shapes[a]
+            b_arr = numpy_helper.to_array(inits[b]).astype("float32")
+            if len(a_shape) != 4 or b_arr.ndim != 2:
+                raise SystemExit(f"unsupported MatMul {node.name}: "
+                                 f"{a_shape} x {list(b_arr.shape)}")
+            n, k = b_arr.shape[1], b_arr.shape[0]
+            # Conv weights are [out, in, kh, kw]; b is [in, out].
+            weight = b_arr.transpose(1, 0).reshape(n, k, 1, 1)
+            data, perm_in, perm_out = a, [0, 3, 1, 2], [0, 2, 3, 1]
+        else:
+            # out[..., i, j] = sum_k a[i, k] * b[..., k, j]; the constant sits
+            # on the left and contracts the second spatial axis.
+            b_shape = shapes[b]
+            a_arr = numpy_helper.to_array(inits[a]).astype("float32")
+            if a_arr.ndim != 2 or len(b_shape) != 4:
+                raise SystemExit(f"unsupported MatMul {node.name}: "
+                                 f"{list(a_arr.shape)} x {b_shape}")
+            k = a_arr.shape[0]
+            weight = a_arr.reshape(k, k, 1, 1)
+            data, perm_in, perm_out = b, [0, 2, 1, 3], [0, 2, 1, 3]
+
+        wname = node.name + "_w"
+        new_inits.append(numpy_helper.from_array(weight, wname))
+        t1 = node.output[0] + "_t1"
+        conv = node.output[0] + "_conv"
+        new_nodes.extend([
+            helper.make_node("Transpose", [data], [t1],
+                             name=node.name + "_t1", perm=perm_in),
+            helper.make_node("Conv", [t1, wname], [conv],
+                             name=node.name + "_conv", pads=[0, 0, 0, 0],
+                             strides=[1, 1]),
+            helper.make_node("Transpose", [conv], [node.output[0]],
+                             name=node.name + "_t2", perm=perm_out),
+        ])
+        converted += 1
+
+    graph.ClearField("node")
+    graph.node.extend(new_nodes)
+    graph.initializer.extend(new_inits)
+
+    # The DFT matrices are dead once every MatMul that used them is gone.
+    used = {inp for node in graph.node for inp in node.input}
+    used.update(v.name for v in graph.output)
+    kept = [i for i in graph.initializer if i.name in used]
+    if len(kept) != len(graph.initializer):
+        graph.ClearField("initializer")
+        graph.initializer.extend(kept)
+    print(f"rewrote {converted} MatMul nodes as 1x1 convolutions")
+    return model
+
+
 def self_check(original_path: str, fixed_path: str) -> None:
     """The rewrites must not change the model's output."""
     rng = np.random.default_rng(0)
@@ -128,6 +216,7 @@ def main() -> None:
     onnx.save(widen_to_fp32(onnx.load(args.onnx)), base)
 
     model = replace_gathers(onnx.load(base))
+    model = matmul_to_conv(model)
     onnx.checker.check_model(model)
     out_path = os.path.join(args.out_dir, "inpaint.onnx")
     onnx.save(model, out_path)

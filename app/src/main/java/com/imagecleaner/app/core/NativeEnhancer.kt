@@ -33,6 +33,7 @@ object NativeEnhancer {
     ): Long
 
     @JvmStatic external fun nativeDestroy(handle: Long)
+    @JvmStatic external fun nativePreload(handle: Long, mode: Int): Int
     @JvmStatic external fun nativeLastError(): String
 
     @JvmStatic external fun nativeEnhance(
@@ -60,6 +61,15 @@ object NativeEnhancer {
         val handle = nativeCreate(modelDir, manifestJson, threads, useVulkan)
         if (handle == 0L) throw IOException(nativeLastError())
         return handle
+    }
+
+    /**
+     * Loads the models [mode] needs ahead of the first run. The load is
+     * several seconds for the 100 MB inpainting model, so the UI starts it
+     * when the mode is selected instead of on the first tap.
+     */
+    fun preload(handle: Long, mode: Int) {
+        if (handle != 0L) nativePreload(handle, mode)
     }
 
     /**

@@ -1,7 +1,10 @@
 #include "inpaint.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
+
+#include <android/log.h>
 
 namespace ic {
 namespace {
@@ -11,8 +14,11 @@ struct Crop {
 };
 
 // Square window centred on the painted region, with 2x context so LaMa sees
-// enough surrounding structure; clamped to the photo.
-Crop compute_crop(const uint8_t* mask, int w, int h, int stride) {
+// enough surrounding structure; clamped to the photo.  The window never goes
+// below [model_size]: LaMa only knows 512 px crops at their own scale, so a
+// small mask blown up to 512 loses the surrounding contours (a mug rim turns
+// into a blurred smudge) — a model-sized crop keeps the input in distribution.
+Crop compute_crop(const uint8_t* mask, int w, int h, int stride, int model_size) {
     int min_x = w, min_y = h, max_x = -1, max_y = -1;
     for (int y = 0; y < h; ++y) {
         const uint8_t* row = mask + static_cast<size_t>(y) * stride;
@@ -30,8 +36,8 @@ Crop compute_crop(const uint8_t* mask, int w, int h, int stride) {
 
     const int bw = max_x - min_x + 1;
     const int bh = max_y - min_y + 1;
-    int side = std::max(64, static_cast<int>(std::max(bw, bh) * 2.0f));
-    side = std::min({side, std::max(w, h), w, h});
+    int side = std::max({model_size, 64, static_cast<int>(std::max(bw, bh) * 2.0f)});
+    side = std::min({side, w, h});
     side = std::max(side, std::min({w, h, 64}));
 
     const int cx = (min_x + max_x) / 2;
@@ -64,14 +70,27 @@ bool Inpainter::Load(const InpaintConfig& cfg, int threads, bool use_vulkan,
         return false;
     }
     loaded_ = true;
+    Warmup();
     return true;
+}
+
+void Inpainter::Warmup() const {
+    ncnn::Mat input(cfg_.size, cfg_.size, 4);
+    input.fill(0.f);
+    ncnn::Mat out;
+    ncnn::Extractor ex = net_.create_extractor();
+    ex.set_light_mode(true);
+    ex.input(cfg_.input_blob.c_str(), input);
+    const int rc = ex.extract(cfg_.output_blob.c_str(), out);
+    __android_log_print(ANDROID_LOG_INFO, "PixelUpNative",
+                        "inpaint warmup: rc=%d out=%dx%dx%d", rc, out.w, out.h, out.c);
 }
 
 ImageRgb Inpainter::Inpaint(const ImageRgb& image, const uint8_t* mask,
                             int mask_stride,
                             const std::function<void(float)>& percent_cb) const {
     if (!loaded_ || !mask) return image;
-    const Crop crop = compute_crop(mask, image.w, image.h, mask_stride);
+    const Crop crop = compute_crop(mask, image.w, image.h, mask_stride, cfg_.size);
     if (crop.side <= 0) return image;  // nothing painted
 
     const int S = crop.side;
@@ -118,11 +137,16 @@ ImageRgb Inpainter::Inpaint(const ImageRgb& image, const uint8_t* mask,
 
     ncnn::Mat out;
     {
+        const auto t = std::chrono::steady_clock::now();
         ncnn::Extractor ex = net_.create_extractor();
         ex.set_light_mode(true);
         ex.input(cfg_.input_blob.c_str(), input);
-        if (ex.extract(cfg_.output_blob.c_str(), out) != 0 || out.w != N ||
-            out.h != N || out.c < 3) {
+        const int rc = ex.extract(cfg_.output_blob.c_str(), out);
+        __android_log_print(ANDROID_LOG_INFO, "PixelUpNative",
+                            "inpaint net: rc=%d side=%d %.1fms", rc, S,
+                            std::chrono::duration<double, std::milli>(
+                                std::chrono::steady_clock::now() - t).count());
+        if (rc != 0 || out.w != N || out.h != N || out.c < 3) {
             return image;
         }
     }

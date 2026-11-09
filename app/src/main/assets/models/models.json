@@ -1,9 +1,9 @@
 {
   "version": 1,
-  "base_url": "https://github.com/chen3feng/image-cleaner/releases/download/models-4/",
+  "base_url": "https://github.com/chen3feng/image-cleaner/releases/download/models-5/",
   "mirror_base_urls": [
-    "https://ghfast.top/https://github.com/chen3feng/image-cleaner/releases/download/models-4/",
-    "https://gh-proxy.com/https://github.com/chen3feng/image-cleaner/releases/download/models-4/"
+    "https://ghfast.top/https://github.com/chen3feng/image-cleaner/releases/download/models-5/",
+    "https://gh-proxy.com/https://github.com/chen3feng/image-cleaner/releases/download/models-5/"
   ],
   "files": [
     {
@@ -75,14 +75,14 @@
     {
       "id": "inpaint_param",
       "path": "inpaint-lama.ncnn.param",
-      "size": 104885,
-      "sha256": "8a536d587aab155d8f67b059b162ca9f7166d84cbc80814bd9a77ab1046b5183"
+      "size": 132094,
+      "sha256": "9b62ef431d4a8d3a5cc0fe2b24401b2cdf80c3ad5029ff5986b37fdb5a65da6e"
     },
     {
       "id": "inpaint_bin",
       "path": "inpaint-lama.ncnn.bin",
-      "size": 102814544,
-      "sha256": "c8433b9d5a0078a6fe52cbc8205f192c022996ce14207e35a4b2ffeb72b25dbd"
+      "size": 105142224,
+      "sha256": "b4b44ae90a3f26c1c94266c7a9bd7f764613561dc863ebe3c0941d9bd930ed31"
     }
   ],
   "scrfd": {

@@ -91,6 +91,20 @@ extern "C" int ic_inpaint(IC_Handle handle,
     return 0;
 }
 
+extern "C" int ic_preload(IC_Handle handle, int mode) {
+    auto* ctx = static_cast<Context*>(handle);
+    if (!ctx) {
+        g_last_error = "null pipeline handle";
+        return -1;
+    }
+    std::string error;
+    if (!ctx->pipeline.Preload(mode, error)) {
+        g_last_error = error;
+        return -1;
+    }
+    return 0;
+}
+
 extern "C" const char* ic_last_error(void) {
     return g_last_error.c_str();
 }

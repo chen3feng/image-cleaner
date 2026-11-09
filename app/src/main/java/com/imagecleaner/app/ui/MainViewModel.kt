@@ -136,6 +136,19 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setMode(mode: Int) {
         _ui.value = _ui.value.copy(mode = mode, comparing = false, compareImage = null)
+        // Models load lazily; the inpainting one is ~100 MB and costs several
+        // seconds. Start it when the user picks the mode, not on the first
+        // tap, so painting time hides the load.
+        val h = handle
+        if (h != 0L && mode != MODE_AUTO) {
+            viewModelScope.launch(Dispatchers.IO) {
+                try {
+                    NativeEnhancer.preload(h, mode)
+                } catch (e: Exception) {
+                    Log.w(TAG, "model preload failed", e)
+                }
+            }
+        }
     }
 
     fun setScale(scale: Int) {

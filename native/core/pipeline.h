@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <string>
 
 #include "codeformer.h"
@@ -42,7 +43,12 @@ public:
                  uint8_t* dst_rgba, int dst_capacity,
                  std::string& error, const ProgressFn& progress = {});
 
+    // Loads the models for [mode] ahead of time. Serialised with the calls
+    // above so a background preload cannot race a running enhancement.
+    bool Preload(int mode, std::string& error);
+
 private:
+    std::mutex mutex_;  // serialises Enhance/Inpaint/Preload
     ModelManifest manifest_;
     int threads_ = 4;
     bool use_vulkan_ = false;

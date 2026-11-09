@@ -85,6 +85,14 @@ Java_com_imagecleaner_app_core_NativeEnhancer_nativeDestroy(
     ic_destroy(reinterpret_cast<IC_Handle>(handle));
 }
 
+extern "C" JNIEXPORT jint JNICALL
+Java_com_imagecleaner_app_core_NativeEnhancer_nativePreload(
+    JNIEnv*, jclass, jlong handle, jint mode) {
+    auto* h = reinterpret_cast<IC_Handle>(handle);
+    if (!h) return -1;
+    return ic_preload(h, mode);
+}
+
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_imagecleaner_app_core_NativeEnhancer_nativeLastError(JNIEnv* env, jclass) {
     return env->NewStringUTF(ic_last_error());

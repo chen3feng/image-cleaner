@@ -29,6 +29,10 @@ public:
                      const std::function<void(float)>& percent_cb) const;
 
 private:
+    // Runs one throwaway forward so Vulkan compiles its pipelines and uploads
+    // the weights now instead of during the user's first erase.
+    void Warmup() const;
+
     ncnn::Net net_;
     InpaintConfig cfg_;
     bool loaded_ = false;
